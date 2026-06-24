@@ -70,18 +70,12 @@
       "perMachine": false
     },
     "mac": {
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
-      ],
-      "icon": "assets/icon.icns",
-      "category": "public.app-category.productivity"
-    },
+  "target": [
+    { "target": "dmg", "arch": ["x64", "arm64"] }
+  ],
+  "icon": "assets/icon.png",
+  "category": "public.app-category.productivity"
+},
     "linux": {
       "target": "AppImage",
       "icon": "assets/icon.png",
