@@ -30,20 +30,54 @@
       "renderer/**/*",
       "assets/**/*"
     ],
+    "extraResources": [],
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
-      "icon": "assets/icon.ico"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "publish": [
+        {
+          "provider": "github"
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "PDFEditor Pro"
+      "shortcutName": "PDFEditor Pro",
+      "installerLanguages": [
+        "fr_FR",
+        "en_US"
+      ],
+      "license": null,
+      "perMachine": false
     },
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "icon": "assets/icon.icns",
       "category": "public.app-category.productivity"
@@ -56,6 +90,15 @@
     "publish": {
       "provider": "github",
       "releaseType": "release"
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": "pdf",
+        "name": "PDF Document",
+        "description": "Ouvrir avec PDFEditor Pro",
+        "icon": "assets/icon.ico",
+        "role": "Editor"
+      }
+    ]
   }
 }

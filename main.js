@@ -397,6 +397,51 @@ ipcMain.handle('ai-chat', async (event, { messages, apiKey, apiUrl }) => {
 });
 
 // ─── Cycle de vie Electron ────────────────────────────────────────────────────
-app.whenReady().then(createWindow);
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+
+// Extraire un chemin PDF depuis argv (ignore les flags Electron internes)
+function getPdfFromArgv(argv) {
+  return argv.slice(1).find(a => !a.startsWith('-') && a.toLowerCase().endsWith('.pdf')) || null;
+}
+
+// Single-instance : si l'app est déjà ouverte et qu'on double-clique un PDF,
+// on transmet le fichier à la fenêtre existante au lieu d'en ouvrir une nouvelle.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', (event, argv) => {
+    const filePath = getPdfFromArgv(argv);
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+      if (filePath) sendFileToRenderer(filePath);
+    }
+  });
+
+  app.whenReady().then(() => {
+    createWindow();
+    // Fichier passé en argument au premier lancement (double-clic depuis Explorer)
+    const filePath = getPdfFromArgv(process.argv);
+    if (filePath) {
+      // Attendre que le renderer soit prêt avant d'envoyer le fichier
+      mainWindow.webContents.once('did-finish-load', () => {
+        setTimeout(() => sendFileToRenderer(filePath), 300);
+      });
+    }
+  });
+
+  app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+
+  // Mac : ouvrir un fichier via le Finder (open-file event)
+  app.on('open-file', (event, filePath) => {
+    event.preventDefault();
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.once('did-finish-load', () => {
+        setTimeout(() => sendFileToRenderer(filePath), 300);
+      });
+      if (!mainWindow.webContents.isLoading()) sendFileToRenderer(filePath);
+    }
+  });
+
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+}
