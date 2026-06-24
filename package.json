@@ -30,15 +30,12 @@
       "renderer/**/*",
       "assets/**/*"
     ],
-    "extraResources": [],
     "win": {
-  "target": [
-    { "target": "nsis", "arch": ["x64"] }
-  ],
-  "icon": "assets/icon.ico",
-  "publish": [{ "provider": "github" }]
-},
-      ]
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "assets/icon.ico",
+      "publish": [{ "provider": "github" }]
     },
     "nsis": {
       "oneClick": false,
@@ -49,21 +46,12 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "PDFEditor Pro",
-      "installerLanguages": [
-        "fr_FR",
-        "en_US"
-      ],
+      "installerLanguages": ["fr_FR", "en_US"],
       "license": null
     },
     "mac": {
       "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
+        { "target": "dmg", "arch": ["x64", "arm64"] }
       ],
       "icon": "assets/icon.icns",
       "category": "public.app-category.productivity"
