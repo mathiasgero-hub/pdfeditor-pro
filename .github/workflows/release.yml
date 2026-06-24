@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -36,7 +39,7 @@ jobs:
       - name: Build & publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run dist
+        run: npx electron-builder --publish always
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
