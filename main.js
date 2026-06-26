@@ -2,9 +2,11 @@
 
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const { createWorker } = require('tesseract.js');
-const path = require('path');
-const fs   = require('fs');
-const os   = require('os');
+const path  = require('path');
+const fs    = require('fs');
+const os    = require('os');
+const https = require('https');
+const http  = require('http');
 
 let mainWindow;
 
@@ -228,7 +230,14 @@ ipcMain.handle('get-settings', () => {
 });
 
 ipcMain.handle('save-settings', (event, settings) => {
-  try { fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2)); return { success: true }; }
+  try {
+    // Merge avec les paramètres existants pour ne jamais perdre de clés
+    let existing = {};
+    try { existing = JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8')); } catch(e) {}
+    const merged = { ...existing, ...settings };
+    fs.writeFileSync(getSettingsPath(), JSON.stringify(merged, null, 2));
+    return { success: true };
+  }
   catch (err) { return { success: false, error: err.message }; }
 });
 
@@ -396,15 +405,467 @@ ipcMain.handle('ai-chat', async (event, { messages, apiKey, apiUrl }) => {
   } catch(err) { return { success: false, error: err.message }; }
 });
 
-// ─── Cycle de vie Electron ────────────────────────────────────────────────────
+// ─── IPC : Sauvegarder une image ─────────────────────────────────────────────
+ipcMain.handle('save-image-dialog', async (event, { defaultName }) => {
+  return await dialog.showSaveDialog(mainWindow, {
+    title: 'Enregistrer l\'image améliorée',
+    defaultPath: defaultName || 'image-amelioree.png',
+    filters: [
+      { name: 'Image PNG',  extensions: ['png'] },
+      { name: 'Image JPEG', extensions: ['jpg', 'jpeg'] },
+      { name: 'Image WebP', extensions: ['webp'] },
+    ]
+  });
+});
 
-// Extraire un chemin PDF depuis argv (ignore les flags Electron internes)
+// ─── IPC : Real-ESRGAN via onnxruntime-node (natif, rapide) ─────────────────
+let ortNode = null;
+try { ortNode = require('onnxruntime-node'); } catch(e) { console.warn('onnxruntime-node non disponible:', e.message); }
+
+let esrganNodeSession = null;
+let esrganNodeIsF16   = false;
+let esrganNodeScale   = 4;
+
+let espcnNodeSession  = null;
+
+// ── Float16 helpers ──────────────────────────────────────────────────────────
+function f32ToF16Array(src) {
+  const out = new Uint16Array(src.length);
+  for (let i = 0; i < src.length; i++) {
+    const f = src[i];
+    if (isNaN(f))       { out[i] = 0x7e00; continue; }
+    if (!isFinite(f))   { out[i] = f > 0 ? 0x7c00 : 0xfc00; continue; }
+    const b    = new Uint32Array(new Float32Array([f]).buffer)[0];
+    const sign = (b >> 16) & 0x8000;
+    const exp  = ((b >> 23) & 0xff) - 127 + 15;
+    const man  = (b >> 13) & 0x3ff;
+    if (exp <= 0)  { out[i] = sign; continue; }
+    if (exp >= 31) { out[i] = sign | 0x7c00; continue; }
+    out[i] = sign | (exp << 10) | man;
+  }
+  return out;
+}
+function f16ToF32(v) {
+  const sign = (v & 0x8000) ? -1 : 1;
+  const exp  = (v >> 10) & 0x1f;
+  const man  =  v & 0x3ff;
+  if (exp === 0)  return sign * Math.pow(2, -14) * (man / 1024);
+  if (exp === 31) return man ? NaN : sign * Infinity;
+  return sign * Math.pow(2, exp - 15) * (1 + man / 1024);
+}
+function f16ArrayToF32(src) {
+  const out = new Float32Array(src.length);
+  for (let i = 0; i < src.length; i++) out[i] = f16ToF32(src[i]);
+  return out;
+}
+
+async function getEsrganNodeSession(event) {
+  // Session déjà en mémoire — retour immédiat
+  if (esrganNodeSession) {
+    event.sender.send('esrgan-status', 'Modèle déjà en mémoire ✓');
+    return esrganNodeSession;
+  }
+  if (!ortNode) throw new Error('onnxruntime-node non installé');
+
+  const modelPath = path.join(app.getPath('userData'), 'onnx-models', 'realesrgan-x4plus.onnx');
+  if (!fs.existsSync(modelPath)) throw new Error('Modèle non téléchargé — utilisez d\'abord "Amélioration IA" pour le télécharger');
+
+  // Premier chargement depuis le cache disque (~30-90s selon le modèle)
+  event.sender.send('esrgan-status', 'Chargement du modèle depuis le cache disque…');
+  esrganNodeSession = await ortNode.InferenceSession.create(modelPath, {
+    executionProviders: ['cpu'],
+    graphOptimizationLevel: 'all',
+    interOpNumThreads: 4,
+    intraOpNumThreads: 4,
+  });
+
+  const inName  = esrganNodeSession.inputNames[0];
+  const outName = esrganNodeSession.outputNames[0];
+
+  // Probe pour détecter float16 et scale
+  try {
+    const t = new ortNode.Tensor('float32', new Float32Array(3), [1,3,1,1]);
+    const r = await esrganNodeSession.run({ [inName]: t });
+    esrganNodeIsF16 = false;
+    esrganNodeScale = r[outName].dims[2] || 4;
+  } catch(e) {
+    if (e.message && (e.message.includes('float16') || e.message.includes('float 16'))) {
+      esrganNodeIsF16 = true;
+      try {
+        const t16 = new ortNode.Tensor('float16', f32ToF16Array(new Float32Array(3)), [1,3,1,1]);
+        const r16 = await esrganNodeSession.run({ [inName]: t16 });
+        esrganNodeScale = r16[outName].dims[2] || 4;
+      } catch(e2) {
+        esrganNodeScale = 4;
+      }
+    } else {
+      throw e;
+    }
+  }
+  event.sender.send('esrgan-status', `Modèle prêt (${esrganNodeIsF16 ? 'fp16' : 'fp32'}, ×${esrganNodeScale})`);
+  return esrganNodeSession;
+}
+
+// Helper : Buffer BGRA → Float32Array RGB [1,3,H,W]
+function bgraToRgbTensor(buf, x, y, tw, th, stride) {
+  const data = new Float32Array(3 * th * tw);
+  for (let r = 0; r < th; r++) {
+    for (let c = 0; c < tw; c++) {
+      const si = ((y+r)*stride + (x+c))*4;
+      const pi = r*tw + c;
+      data[pi]            = buf[si+2] / 255; // R
+      data[th*tw + pi]    = buf[si+1] / 255; // G
+      data[2*th*tw + pi]  = buf[si]   / 255; // B
+    }
+  }
+  return data;
+}
+
+// Helper : Float32Array RGB output → Buffer BGRA
+function rgbToBgra(out, dims, dst, dx, dy, dstW) {
+  const [, , oh, ow] = dims;
+  for (let r = 0; r < oh; r++) {
+    for (let c = 0; c < ow; c++) {
+      const oi = ((dy+r)*dstW + (dx+c))*4;
+      const pi = r*ow + c;
+      dst[oi]   = Math.min(255, Math.max(0, out[2*oh*ow+pi]*255+0.5))|0; // B
+      dst[oi+1] = Math.min(255, Math.max(0, out[oh*ow+pi]*255+0.5))|0;   // G
+      dst[oi+2] = Math.min(255, Math.max(0, out[pi]*255+0.5))|0;         // R
+      dst[oi+3] = 255;
+    }
+  }
+}
+
+ipcMain.handle('onnx-enhance-image', async (event, { imageBase64, imageType }) => {
+  const session  = await getEsrganNodeSession(event);
+  const inName   = session.inputNames[0];
+  const outName  = session.outputNames[0];
+  const { nativeImage } = require('electron');
+
+  const img    = nativeImage.createFromDataURL(`data:${imageType};base64,${imageBase64}`);
+  const { width: w, height: h } = img.getSize();
+  const src    = img.getBitmap();     // Buffer BGRA
+  const SCALE  = esrganNodeScale;
+  const TILE   = 512;
+  const outW   = w * SCALE, outH = h * SCALE;
+  const dst    = Buffer.alloc(outW * outH * 4, 255);
+
+  const tilesX = Math.ceil(w / TILE), tilesY = Math.ceil(h / TILE);
+  let done = 0, total = tilesX * tilesY;
+
+  for (let ty = 0; ty < h; ty += TILE) {
+    for (let tx = 0; tx < w; tx += TILE) {
+      const tw = Math.min(TILE, w - tx);
+      const th = Math.min(TILE, h - ty);
+
+      const buf    = bgraToRgbTensor(src, tx, ty, tw, th, w);
+      const tensorData = esrganNodeIsF16 ? f32ToF16Array(buf) : buf;
+      const tensorType = esrganNodeIsF16 ? 'float16' : 'float32';
+      const tensor = new ortNode.Tensor(tensorType, tensorData, [1, 3, th, tw]);
+      const result = await session.run({ [inName]: tensor });
+      const rawOut = result[outName].data;
+      const out    = esrganNodeIsF16 ? f16ArrayToF32(rawOut) : rawOut;
+      const dims   = result[outName].dims;
+
+      rgbToBgra(out, dims, dst, tx*SCALE, ty*SCALE, outW);
+
+      done++;
+      event.sender.send('esrgan-progress', Math.round(done / total * 100));
+    }
+  }
+
+  const resultImg = nativeImage.createFromBuffer(dst, { width: outW, height: outH });
+  return resultImg.toPNG().toString('base64');
+});
+
+// ─── ESPCN : session + helpers + handler ─────────────────────────────────────
+
+async function getEspcnNodeSession(event) {
+  if (espcnNodeSession) {
+    event.sender.send('esrgan-status', 'Modèle ESPCN déjà en mémoire ✓');
+    return espcnNodeSession;
+  }
+  if (!ortNode) throw new Error('onnxruntime-node non installé');
+
+  const modelPath = path.join(app.getPath('userData'), 'onnx-models', 'espcn-x4.onnx');
+  if (!fs.existsSync(modelPath)) throw new Error('Modèle ESPCN non téléchargé');
+
+  event.sender.send('esrgan-status', 'Chargement du modèle ESPCN…');
+  espcnNodeSession = await ortNode.InferenceSession.create(modelPath, {
+    executionProviders: ['cpu'],
+    graphOptimizationLevel: 'all',
+    interOpNumThreads: 4,
+    intraOpNumThreads: 4,
+  });
+  event.sender.send('esrgan-status', 'Modèle ESPCN prêt ✓');
+  return espcnNodeSession;
+}
+
+// BGRA buf → Y, Cb, Cr (Float32Array, valeurs 0-1)
+function extractYCbCr(buf, w, h) {
+  const Y  = new Float32Array(h * w);
+  const Cb = new Float32Array(h * w);
+  const Cr = new Float32Array(h * w);
+  for (let i = 0; i < h * w; i++) {
+    const B = buf[i*4]   / 255;
+    const G = buf[i*4+1] / 255;
+    const R = buf[i*4+2] / 255;
+    Y[i]  =  0.299*R + 0.587*G + 0.114*B;
+    Cb[i] =  0.5 - 0.168736*R - 0.331264*G + 0.5*B;
+    Cr[i] =  0.5 + 0.5*R - 0.418688*G - 0.081312*B;
+  }
+  return { Y, Cb, Cr };
+}
+
+// Interpolation bilinéaire Float32Array srcH×srcW → dstH×dstW
+function bilinearUpscale(src, srcW, srcH, dstW, dstH) {
+  const dst = new Float32Array(dstH * dstW);
+  for (let dy = 0; dy < dstH; dy++) {
+    for (let dx = 0; dx < dstW; dx++) {
+      const sx = (dx + 0.5) * srcW / dstW - 0.5;
+      const sy = (dy + 0.5) * srcH / dstH - 0.5;
+      const x0 = Math.max(0, Math.floor(sx)), x1 = Math.min(srcW-1, x0+1);
+      const y0 = Math.max(0, Math.floor(sy)), y1 = Math.min(srcH-1, y0+1);
+      const fx = sx - x0, fy = sy - y0;
+      dst[dy*dstW+dx] =
+        src[y0*srcW+x0]*(1-fx)*(1-fy) + src[y0*srcW+x1]*fx*(1-fy) +
+        src[y1*srcW+x0]*(1-fx)*fy     + src[y1*srcW+x1]*fx*fy;
+    }
+  }
+  return dst;
+}
+
+// Y + Cb_up + Cr_up → Buffer BGRA
+function yCbCrToBgra(Y, Cb, Cr, w, h) {
+  const dst = Buffer.alloc(w * h * 4, 255);
+  for (let i = 0; i < h * w; i++) {
+    const y  = Math.max(0, Math.min(1, Y[i]));
+    const cb = Cb[i] - 0.5;
+    const cr = Cr[i] - 0.5;
+    const R = Math.max(0, Math.min(1, y + 1.402*cr));
+    const G = Math.max(0, Math.min(1, y - 0.344136*cb - 0.714136*cr));
+    const B = Math.max(0, Math.min(1, y + 1.772*cb));
+    dst[i*4]   = (B*255 + 0.5)|0;
+    dst[i*4+1] = (G*255 + 0.5)|0;
+    dst[i*4+2] = (R*255 + 0.5)|0;
+    dst[i*4+3] = 255;
+  }
+  return dst;
+}
+
+ipcMain.handle('onnx-espcn-enhance', async (event, { imageBase64, imageType }) => {
+  const session = await getEspcnNodeSession(event);
+  const inName  = session.inputNames[0];
+  const outName = session.outputNames[0];
+  const { nativeImage } = require('electron');
+
+  const img  = nativeImage.createFromDataURL(`data:${imageType};base64,${imageBase64}`);
+  const { width: w, height: h } = img.getSize();
+  const src  = img.getBitmap();   // Buffer BGRA
+  const TILE = 224;               // dimensions fixes du modèle ESPCN
+
+  // Le facteur d'échelle réel est détecté sur la première tuile (3× pour le modèle ONNX Zoo)
+  let SCALE = null, OUT_TILE = null, dstW = null, dstH = null, dst = null;
+
+  const tilesX = Math.ceil(w / TILE), tilesY = Math.ceil(h / TILE);
+  let done = 0, total = tilesX * tilesY;
+
+  for (let ty = 0; ty < h; ty += TILE) {
+    for (let tx = 0; tx < w; tx += TILE) {
+      const tw = Math.min(TILE, w - tx);
+      const th = Math.min(TILE, h - ty);
+
+      // Canal Y zero-paddé à 224×224 + sauvegarde BGRA source de la tuile
+      const Ypad    = new Float32Array(TILE * TILE);
+      const srcTile = new Uint8Array(th * tw * 4);
+      for (let r = 0; r < th; r++) {
+        for (let c = 0; c < tw; c++) {
+          const si = ((ty+r)*w + (tx+c)) * 4;
+          const B  = src[si]/255, G = src[si+1]/255, R = src[si+2]/255;
+          Ypad[r * TILE + c] = 0.299*R + 0.587*G + 0.114*B;
+          const i = r*tw+c;
+          srcTile[i*4]   = src[si];
+          srcTile[i*4+1] = src[si+1];
+          srcTile[i*4+2] = src[si+2];
+          srcTile[i*4+3] = 255;
+        }
+      }
+
+      // Inférence sur 224×224 (dimensions fixes)
+      event.sender.send('esrgan-status', `ESPCN tuile ${done+1}/${total}…`);
+      const tensor = new ortNode.Tensor('float32', Ypad, [1, 1, TILE, TILE]);
+      const result = await session.run({ [inName]: tensor });
+      const Yout   = result[outName].data;
+      const odims  = result[outName].dims;   // [1,1,OUT_TILE,OUT_TILE]
+
+      // Détecter le facteur d'échelle réel sur la première tuile
+      if (SCALE === null) {
+        SCALE    = Math.round(odims[2] / TILE);   // 672/224=3 ou 896/224=4
+        OUT_TILE = odims[2];                       // largeur réelle de la sortie
+        dstW     = w * SCALE;
+        dstH     = h * SCALE;
+        dst      = Buffer.alloc(dstW * dstH * 4, 255);
+        event.sender.send('esrgan-status', `ESPCN facteur ×${SCALE} détecté`);
+      }
+
+      // Reconstruction : Y ESPCN (enhanced) + Cb/Cr source (nearest-neighbor) → BGRA
+      const outH = th * SCALE, outW = tw * SCALE;
+      for (let r = 0; r < outH; r++) {
+        const sr = Math.min(th-1, (r / SCALE) | 0);
+        for (let c = 0; c < outW; c++) {
+          const sc  = Math.min(tw-1, (c / SCALE) | 0);
+          const si  = sr*tw+sc;
+          const B0  = srcTile[si*4]   / 255;
+          const G0  = srcTile[si*4+1] / 255;
+          const R0  = srcTile[si*4+2] / 255;
+          // Cb, Cr source (BT.601)
+          const cb  = -0.168736*R0 - 0.331264*G0 + 0.5*B0;
+          const cr  =  0.5*R0 - 0.418688*G0 - 0.081312*B0;
+          // Y amélioré par ESPCN (lire dans le buffer OUT_TILE-large)
+          const y   = Math.max(0, Math.min(1, Yout[r * OUT_TILE + c]));
+          // YCbCr → RGB
+          const R   = Math.max(0, Math.min(1, y + 1.402*cr));
+          const G   = Math.max(0, Math.min(1, y - 0.344136*cb - 0.714136*cr));
+          const B   = Math.max(0, Math.min(1, y + 1.772*cb));
+          const oi  = ((ty*SCALE+r)*dstW + (tx*SCALE+c)) * 4;
+          dst[oi]   = (B*255+0.5)|0;
+          dst[oi+1] = (G*255+0.5)|0;
+          dst[oi+2] = (R*255+0.5)|0;
+          dst[oi+3] = 255;
+        }
+      }
+
+      done++;
+      event.sender.send('esrgan-progress', Math.round(done / total * 100));
+    }
+  }
+
+  const resultImg = nativeImage.createFromBuffer(dst, { width: dstW, height: dstH });
+  return resultImg.toPNG().toString('base64');
+});
+
+// ─── IPC : OpenAI GPT-Image enhance ─────────────────────────────────────────
+ipcMain.handle('openai-image-enhance', async (event, { imageBase64, apiKey, prompt }) => {
+  const imageBuffer = Buffer.from(imageBase64, 'base64');
+  const boundary    = '----OABoundary' + Date.now().toString(16);
+  const CRLF        = '\r\n';
+
+  // Construire le corps multipart (RFC 2046)
+  const field = (name, value) => Buffer.from(
+    `--${boundary}${CRLF}Content-Disposition: form-data; name="${name}"${CRLF}${CRLF}${value}${CRLF}`,
+    'utf8'
+  );
+
+  const body = Buffer.concat([
+    field('model',   'gpt-image-1'),
+    field('prompt',  prompt),
+    field('n',       '1'),
+    field('quality', 'high'),
+    field('size',    'auto'),
+    Buffer.from(
+      `--${boundary}${CRLF}` +
+      `Content-Disposition: form-data; name="image"; filename="page.png"${CRLF}` +
+      `Content-Type: image/png${CRLF}${CRLF}`,
+      'utf8'
+    ),
+    imageBuffer,
+    Buffer.from(`${CRLF}--${boundary}--${CRLF}`, 'utf8'),
+  ]);
+
+  // Timer de progression (gpt-image-1 peut prendre 30-90s)
+  let elapsed = 0;
+  const ticker = setInterval(() => {
+    elapsed += 5;
+    event.sender.send('esrgan-status', `GPT-Image génère… ${elapsed}s`);
+  }, 5000);
+
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'api.openai.com',
+      path:     '/v1/images/edits',
+      method:   'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type':  `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': body.length,
+      },
+    }, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        clearInterval(ticker);
+        try {
+          const text = Buffer.concat(chunks).toString('utf8');
+          const json = JSON.parse(text);
+          if (res.statusCode !== 200) {
+            reject(new Error(json.error?.message || 'HTTP ' + res.statusCode + ': ' + text.slice(0,200)));
+          } else {
+            resolve(json);
+          }
+        } catch(e) { reject(e); }
+      });
+    });
+    req.setTimeout(150000, () => {        // timeout 150s
+      clearInterval(ticker);
+      req.destroy(new Error('Timeout OpenAI (150s)'));
+    });
+    req.on('error', (e) => { clearInterval(ticker); reject(e); });
+    req.write(body);
+    req.end();
+  });
+});
+
+// ─── IPC : Modèle ONNX ───────────────────────────────────────────────────────
+function getModelsDir() {
+  const dir = path.join(app.getPath('userData'), 'onnx-models');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+ipcMain.handle('onnx-model-exists', (event, name) => {
+  return fs.existsSync(path.join(getModelsDir(), name));
+});
+
+ipcMain.handle('onnx-model-path', (event, name) => {
+  return path.join(getModelsDir(), name);
+});
+
+ipcMain.handle('onnx-download-model', async (event, { url, name }) => {
+  const dest = path.join(getModelsDir(), name);
+  if (fs.existsSync(dest)) return { ok: true, cached: true };
+
+  const download = (u, redirects = 5) => new Promise((resolve, reject) => {
+    if (redirects === 0) return reject(new Error('Trop de redirections'));
+    const proto = u.startsWith('https') ? https : http;
+    proto.get(u, res => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        return resolve(download(res.headers.location, redirects - 1));
+      }
+      if (res.statusCode !== 200) return reject(new Error('HTTP ' + res.statusCode));
+      const total = parseInt(res.headers['content-length'] || '0');
+      let received = 0;
+      const file = fs.createWriteStream(dest);
+      res.on('data', chunk => {
+        received += chunk.length;
+        if (total > 0) event.sender.send('onnx-progress', Math.round(received / total * 100));
+      });
+      res.pipe(file);
+      file.on('finish', () => { file.close(); resolve({ ok: true }); });
+      file.on('error', err => { try { fs.unlinkSync(dest); } catch(e) {} reject(err); });
+    }).on('error', err => { try { fs.unlinkSync(dest); } catch(e) {} reject(err); });
+  });
+
+  return download(url);
+
+});
+
+
 function getPdfFromArgv(argv) {
   return argv.slice(1).find(a => !a.startsWith('-') && a.toLowerCase().endsWith('.pdf')) || null;
 }
 
-// Single-instance : si l'app est déjà ouverte et qu'on double-clique un PDF,
-// on transmet le fichier à la fenêtre existante au lieu d'en ouvrir une nouvelle.
+// Single-instance
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -420,10 +881,8 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     createWindow();
-    // Fichier passé en argument au premier lancement (double-clic depuis Explorer)
     const filePath = getPdfFromArgv(process.argv);
     if (filePath) {
-      // Attendre que le renderer soit prêt avant d'envoyer le fichier
       mainWindow.webContents.once('did-finish-load', () => {
         setTimeout(() => sendFileToRenderer(filePath), 300);
       });
@@ -432,7 +891,6 @@ if (!gotLock) {
 
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
-  // Mac : ouvrir un fichier via le Finder (open-file event)
   app.on('open-file', (event, filePath) => {
     event.preventDefault();
     if (mainWindow && mainWindow.webContents) {

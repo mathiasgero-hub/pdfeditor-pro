@@ -42,9 +42,9 @@ body{
 }
 
 /* ─── SCROLLBARS ─── */
-::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-track{background:rgba(0,0,0,.2)}
-::-webkit-scrollbar-thumb{background:var(--gold-d);border-radius:3px}
+::-webkit-scrollbar-thumb{background:var(--gold-d);border-radius:5px}
 
 /* ─── TOOLTIP (position:fixed, jamais clippé) ─── */
 #tooltip{
@@ -221,7 +221,8 @@ body{
 .ffi i{color:var(--teal);width:14px;font-size:.68rem}
 
 /* ─── CANVAS ─── */
-#canvas{flex:1;background:var(--bg-canvas);overflow:auto;padding:24px 30px;position:relative}
+#canvas{flex:1;background:var(--bg-canvas);overflow:hidden;position:relative;display:flex;flex-direction:column}
+#pdf-viewport{flex:1;overflow:auto;padding:24px 30px;position:relative}
 
 /* Barre d'outils flottante */
 
@@ -509,8 +510,8 @@ body{
 #img-overlay:hover { border-color:var(--gold-l); }
 #img-overlay img { display:block;width:100%;height:100%;object-fit:fill;pointer-events:none; }
 .img-rh {
-  position:absolute;bottom:-5px;right:-5px;width:12px;height:12px;
-  background:var(--gold);cursor:nwse-resize;border-radius:2px;z-index:1;
+  position:absolute;width:12px;height:12px;
+  background:var(--gold);border-radius:2px;z-index:302;
 }
 #img-tb {
   position:absolute;top:-42px;left:0;display:flex;gap:4px;
@@ -1143,7 +1144,7 @@ body.redact-mode #redact-count-badge { display:block !important; }
 .tbl-empty { text-align:center;padding:40px;font-size:.78rem;color:var(--txt2);font-style:italic; }
 
 /* ══ Compresser ═══════════════════════════════════════════════════════════════ */
-#comp-panel { background:var(--bg-panel);border:1px solid var(--gold);border-top:3px solid var(--gold);
+#comp-panel, #enh-panel { background:var(--bg-panel);border:1px solid var(--gold);border-top:3px solid var(--gold);
   border-radius:6px;width:520px;max-width:97vw;display:flex;flex-direction:column; }
 
 /* ══ Mesures canvas overlay ═══════════════════════════════════════════════════ */

@@ -62,4 +62,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
   aiChat: (messages, apiKey, apiUrl) =>
     ipcRenderer.invoke('ai-chat', { messages, apiKey, apiUrl }),
 
+  // ─── Sauvegarder une image ───────────────────────────────────────────────────
+  saveImageDialog: (defaultName) => ipcRenderer.invoke('save-image-dialog', { defaultName }),
+
+  // ─── Modèle ONNX (téléchargement) ───────────────────────────────────────────
+  onnxModelExists:   (name)      => ipcRenderer.invoke('onnx-model-exists', name),
+  onnxModelPath:     (name)      => ipcRenderer.invoke('onnx-model-path', name),
+  onnxDownloadModel: (url, name) => ipcRenderer.invoke('onnx-download-model', { url, name }),
+  onOnnxProgress:    (cb)        => ipcRenderer.on('onnx-progress', (_, pct) => cb(pct)),
+
+  // ─── Real-ESRGAN natif (onnxruntime-node) ────────────────────────────────────
+  onnxEnhanceImage:   (imageBase64, imageType) =>
+    ipcRenderer.invoke('onnx-enhance-image', { imageBase64, imageType }),
+  onEsrganProgress:   (cb) => ipcRenderer.on('esrgan-progress', (_, pct) => cb(pct)),
+  onEsrganStatus:     (cb) => ipcRenderer.on('esrgan-status',   (_, msg) => cb(msg)),
+
+  // ─── ESPCN natif (onnxruntime-node) ──────────────────────────────────────────
+  onnxEspcnEnhance: (imageBase64, imageType) =>
+    ipcRenderer.invoke('onnx-espcn-enhance', { imageBase64, imageType }),
+
+  // ─── OpenAI GPT-Image enhance ─────────────────────────────────────────────
+  openaiImageEnhance: (imageBase64, apiKey, prompt) =>
+    ipcRenderer.invoke('openai-image-enhance', { imageBase64, apiKey, prompt }),
+
 });

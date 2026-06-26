@@ -74,6 +74,7 @@ let imgOverlayResizing = false;
 let imgOverlayDragOff  = { x: 0, y: 0 };
 let imgOverlayRSStart  = null; // resize start
 let imgHasFrame        = false;
+let imgHandles         = null; // { nw, ne, sw, se }
 
 // ─── Annotations texte ────────────────────────────────────────────────────────
 let activeTextAnno     = null;
@@ -626,9 +627,33 @@ async function renderMainPages(pdf, scale, loadInner, loadLabel) {
   const np      = pdf.numPages;
   const pagesEl = document.getElementById('pdf-pages');
 
-  // Sauvegarder la position de scroll pour la restaurer apres zoom
-  const canvasEl   = document.getElementById('canvas');
-  const scrollFrac = canvasEl.scrollTop / Math.max(1, canvasEl.scrollHeight);
+  // Sauvegarder l'ancre de scroll : page visible au centre + position relative dans cette page
+  const canvasEl = document.getElementById('pdf-viewport');
+  let scrollAnchor = null;
+  const existingWraps = Array.from(document.querySelectorAll('.page-wrap'));
+  if (existingWraps.length) {
+    const viewCenter = canvasEl.scrollTop + canvasEl.clientHeight / 2;
+    for (const w of existingWraps) {
+      const top = w.offsetTop;
+      const bot = top + w.offsetHeight;
+      if (viewCenter >= top && viewCenter <= bot) {
+        scrollAnchor = {
+          pageIdx: parseInt(w.dataset.page) - 1,
+          fracInPage: (viewCenter - top) / Math.max(1, w.offsetHeight)
+        };
+        break;
+      }
+    }
+    if (!scrollAnchor && existingWraps.length) {
+      // fallback : première page visible
+      const w = existingWraps[0];
+      scrollAnchor = { pageIdx: 0, fracInPage: 0 };
+    }
+  }
+
+  // Masquer le contenu pendant le rendu pour éviter les sauts visuels
+  canvasEl.style.opacity = '0';
+  canvasEl.style.pointerEvents = 'none';
 
   pagesEl.innerHTML = '';
   pagesEl.style.display = 'flex';
@@ -754,12 +779,20 @@ async function renderMainPages(pdf, scale, loadInner, loadLabel) {
     });
   }
 
-  // Restaurer approximativement la position de scroll
-  if (scrollFrac > 0) {
-    setTimeout(() => {
-      canvasEl.scrollTop = scrollFrac * canvasEl.scrollHeight;
-    }, 50);
+  // Restaurer la position de scroll puis révéler le contenu
+  if (scrollAnchor) {
+    const newWraps = Array.from(document.querySelectorAll('.page-wrap'));
+    const target   = newWraps[scrollAnchor.pageIdx];
+    if (target) {
+      const newScrollTop = target.offsetTop + scrollAnchor.fracInPage * target.offsetHeight - canvasEl.clientHeight / 2;
+      canvasEl.scrollTop = Math.max(0, newScrollTop);
+    }
   }
+  // Laisser le navigateur appliquer le scrollTop avant de révéler
+  requestAnimationFrame(() => {
+    canvasEl.style.opacity = '';
+    canvasEl.style.pointerEvents = '';
+  });
 }
 
 // ─── Rendu des vignettes (effectue une seule fois au chargement) ──────────────
@@ -1371,7 +1404,7 @@ let doublePageMode = false;
 // Adapter à la page : ajuste l'échelle pour que la page 1 remplisse #canvas
 async function fitToPage() {
   if (!currentPdfDoc) { t("Ouvrez un PDF d'abord"); return; }
-  const canvasEl = document.getElementById('canvas');
+  const canvasEl = document.getElementById('pdf-viewport');
   const avail    = canvasEl.clientWidth - 48; // 24px marge de chaque côté
   const page1    = await currentPdfDoc.getPage(1);
   const vp1      = page1.getViewport({ scale: 1 });
@@ -2346,7 +2379,7 @@ async function insertImage() {
     // Placer sur la première page visible
     const wraps = document.querySelectorAll('.page-wrap');
     if (!wraps.length) return;
-    const canv = document.getElementById('canvas');
+    const canv = document.getElementById('pdf-viewport');
     // Trouver la page la plus visible
     let bestWrap = wraps[0], bestVis = 0;
     wraps.forEach(w => {
@@ -2374,10 +2407,20 @@ function createImgOverlay(wrap, b64, type) {
   img.style.cssText = 'display:block;width:100%;height:100%;object-fit:fill;pointer-events:none;user-select:none;';
   div.appendChild(img);
 
-  // Handle de redimensionnement
-  const rh = document.createElement('div');
-  rh.className = 'img-rh';
-  div.appendChild(rh);
+  // Poignées de redimensionnement (4 coins) — dans wrap, pas dans l'overlay
+  imgHandles = {};
+  ['nw','ne','sw','se'].forEach(dir => {
+    const h = document.createElement('div');
+    h.style.cssText = 'position:absolute;width:14px;height:14px;background:#c9a84c;border:2px solid #fff;border-radius:3px;z-index:500;cursor:' + dir + '-resize;box-sizing:border-box;';
+    h.dataset.dir = dir;
+    h.addEventListener('mousedown', e => {
+      imgOverlayResizing = true;
+      imgOverlayRSStart = { x: e.clientX, y: e.clientY, w: div.offsetWidth, h: div.offsetHeight, l: parseInt(div.style.left)||0, t: parseInt(div.style.top)||0, dir };
+      e.preventDefault(); e.stopPropagation();
+    });
+    wrap.appendChild(h);
+    imgHandles[dir] = h;
+  });
 
   // Barre d'outils flottante
   const tb = document.createElement('div');
@@ -2404,17 +2447,16 @@ function createImgOverlay(wrap, b64, type) {
     if (img.naturalWidth && img.naturalHeight) {
       div.style.height = Math.round(initW * img.naturalHeight / img.naturalWidth) + 'px';
     }
+    updateImgHandles();
   };
 
   wrap.appendChild(div);
   imgOverlay = div;
+  updateImgHandles(); // après ajout au DOM pour offsetWidth/Height corrects
 
   // Drag
   div.addEventListener('mousedown', e => {
-    if (e.target.classList.contains('img-rh')) {
-      imgOverlayResizing = true;
-      imgOverlayRSStart  = { x: e.clientX, y: e.clientY, w: div.offsetWidth, h: div.offsetHeight };
-    } else if (!e.target.closest('#img-tb')) {
+    if (!e.target.closest('#img-tb')) {
       imgOverlayDragging = true;
       const r = div.getBoundingClientRect();
       imgOverlayDragOff  = { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -2422,6 +2464,19 @@ function createImgOverlay(wrap, b64, type) {
     e.preventDefault();
     e.stopPropagation();
   });
+}
+
+function updateImgHandles() {
+  if (!imgOverlay || !imgHandles) return;
+  const l = parseInt(imgOverlay.style.left) || 0;
+  const t = parseInt(imgOverlay.style.top)  || 0;
+  const w = imgOverlay.offsetWidth;
+  const h = imgOverlay.offsetHeight;
+  const hs = 7;
+  imgHandles.nw.style.left = (l - hs) + 'px'; imgHandles.nw.style.top = (t - hs) + 'px';
+  imgHandles.ne.style.left = (l + w - hs) + 'px'; imgHandles.ne.style.top = (t - hs) + 'px';
+  imgHandles.sw.style.left = (l - hs) + 'px'; imgHandles.sw.style.top = (t + h - hs) + 'px';
+  imgHandles.se.style.left = (l + w - hs) + 'px'; imgHandles.se.style.top = (t + h - hs) + 'px';
 }
 
 function imgOverlayMove(e) {
@@ -2433,12 +2488,22 @@ function imgOverlayMove(e) {
     imgOverlay.style.left = Math.max(0, nx) + 'px';
     imgOverlay.style.top  = Math.max(0, ny) + 'px';
   } else if (imgOverlayResizing && imgOverlayRSStart) {
-    let nw = Math.max(30, imgOverlayRSStart.w + e.clientX - imgOverlayRSStart.x);
-    let nh = Math.max(20, imgOverlayRSStart.h + e.clientY - imgOverlayRSStart.y);
+    const s = imgOverlayRSStart;
+    const dx = e.clientX - s.x;
+    const dy = e.clientY - s.y;
+    let nw = s.w, nh = s.h, nl = s.l, nt = s.t;
+    if (s.dir === 'se') { nw = s.w + dx; nh = s.h + dy; }
+    else if (s.dir === 'sw') { nw = s.w - dx; nl = s.l + dx; nh = s.h + dy; }
+    else if (s.dir === 'ne') { nw = s.w + dx; nh = s.h - dy; nt = s.t + dy; }
+    else if (s.dir === 'nw') { nw = s.w - dx; nl = s.l + dx; nh = s.h - dy; nt = s.t + dy; }
+    nw = Math.max(30, nw); nh = Math.max(20, nh);
     if (imgAspectLocked && imgAspectRatio > 0) nh = Math.round(nw / imgAspectRatio);
     imgOverlay.style.width  = nw + 'px';
     imgOverlay.style.height = nh + 'px';
+    imgOverlay.style.left   = nl + 'px';
+    imgOverlay.style.top    = nt + 'px';
   }
+  updateImgHandles();
 }
 
 function imgOverlayUp() {
@@ -2449,6 +2514,7 @@ function imgOverlayUp() {
 
 function removeImgOverlay() {
   if (imgOverlay) { imgOverlay.remove(); imgOverlay = null; }
+  if (imgHandles) { Object.values(imgHandles).forEach(h => h.remove()); imgHandles = null; }
   imgOverlayWrap = null; imgOverlayB64 = null; imgHasFrame = false;
 }
 
@@ -2602,6 +2668,7 @@ let pasteOverlayDrag  = false;
 let pasteOverlayRS    = false;
 let pasteOverlayDragOff = null;
 let pasteOverlayRSStart = null;
+let pasteHandles      = null; // { nw, ne, sw, se }
 
 function selPaste() {
   if (!selClipboard || !currentPdfData) { t('Rien à coller'); return; }
@@ -2637,10 +2704,6 @@ function _createPasteOverlay(wrap, b64, lx, ly, initW, initH) {
   img.src = 'data:image/png;base64,' + b64;
   img.style.cssText = 'display:block;width:100%;height:100%;object-fit:fill;pointer-events:none;user-select:none;';
   div.appendChild(img);
-  // Resize handle (reuse img-rh style)
-  const rh = document.createElement('div');
-  rh.className = 'img-rh';
-  div.appendChild(rh);
   // Mini toolbar
   const tb = document.createElement('div');
   tb.id = 'paste-overlay-tb';
@@ -2654,12 +2717,9 @@ function _createPasteOverlay(wrap, b64, lx, ly, initW, initH) {
     '<div class="img-tbtn" onclick="_commitPasteOverlay()" title="Valider — coller définitivement" style="color:#5cb85c"><i class="fa-solid fa-check"></i></div>' +
     '<div class="img-tbtn" onclick="_removePasteOverlay()" title="Annuler" style="color:#e74c3c"><i class="fa-solid fa-xmark"></i></div>';
   div.appendChild(tb);
-  // Drag & resize
+  // Drag
   div.addEventListener('mousedown', e => {
-    if (e.target.classList.contains('img-rh')) {
-      pasteOverlayRS     = true;
-      pasteOverlayRSStart = { x: e.clientX, y: e.clientY, w: div.offsetWidth, h: div.offsetHeight };
-    } else if (!e.target.closest('#paste-overlay-tb')) {
+    if (!e.target.closest('#paste-overlay-tb')) {
       pasteOverlayDrag   = true;
       const r = div.getBoundingClientRect();
       pasteOverlayDragOff = { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -2668,7 +2728,37 @@ function _createPasteOverlay(wrap, b64, lx, ly, initW, initH) {
   });
   wrap.appendChild(div);
   pasteOverlay = div;
+
+  // 4 poignées de redimensionnement dans wrap
+  const BASE_PH = 'position:absolute;width:14px;height:14px;background:#c9a84c;border:2px solid #fff;border-radius:3px;z-index:502;box-sizing:border-box;';
+  pasteHandles = {};
+  ['nw','ne','sw','se'].forEach(dir => {
+    const h = document.createElement('div');
+    h.style.cssText = BASE_PH + 'cursor:' + dir + '-resize;';
+    h.dataset.dir = dir;
+    h.addEventListener('mousedown', e => {
+      pasteOverlayRS = true;
+      pasteOverlayRSStart = { x: e.clientX, y: e.clientY, w: div.offsetWidth, h: div.offsetHeight, l: parseInt(div.style.left)||0, t: parseInt(div.style.top)||0, dir };
+      e.preventDefault(); e.stopPropagation();
+    });
+    wrap.appendChild(h);
+    pasteHandles[dir] = h;
+  });
+  updatePasteHandles();
   t('Déplacez et redimensionnez, puis cliquez ✓');
+}
+
+function updatePasteHandles() {
+  if (!pasteOverlay || !pasteHandles) return;
+  const l = parseInt(pasteOverlay.style.left) || 0;
+  const t = parseInt(pasteOverlay.style.top)  || 0;
+  const w = pasteOverlay.offsetWidth;
+  const h = pasteOverlay.offsetHeight;
+  const hs = 7;
+  pasteHandles.nw.style.left = (l - hs) + 'px'; pasteHandles.nw.style.top = (t - hs) + 'px';
+  pasteHandles.ne.style.left = (l + w - hs) + 'px'; pasteHandles.ne.style.top = (t - hs) + 'px';
+  pasteHandles.sw.style.left = (l - hs) + 'px'; pasteHandles.sw.style.top = (t + h - hs) + 'px';
+  pasteHandles.se.style.left = (l + w - hs) + 'px'; pasteHandles.se.style.top = (t + h - hs) + 'px';
 }
 
 document.addEventListener('mousemove', e => {
@@ -2678,9 +2768,19 @@ document.addEventListener('mousemove', e => {
     pasteOverlay.style.left = Math.max(0, e.clientX - pasteOverlayDragOff.x - wr.left) + 'px';
     pasteOverlay.style.top  = Math.max(0, e.clientY - pasteOverlayDragOff.y - wr.top)  + 'px';
   } else if (pasteOverlayRS && pasteOverlayRSStart) {
-    pasteOverlay.style.width  = Math.max(20, pasteOverlayRSStart.w + e.clientX - pasteOverlayRSStart.x) + 'px';
-    pasteOverlay.style.height = Math.max(20, pasteOverlayRSStart.h + e.clientY - pasteOverlayRSStart.y) + 'px';
+    const s = pasteOverlayRSStart;
+    const dx = e.clientX - s.x, dy = e.clientY - s.y;
+    let nw = s.w, nh = s.h, nl = s.l, nt = s.t;
+    if      (s.dir === 'se') { nw = s.w + dx; nh = s.h + dy; }
+    else if (s.dir === 'sw') { nw = s.w - dx; nl = s.l + dx; nh = s.h + dy; }
+    else if (s.dir === 'ne') { nw = s.w + dx; nh = s.h - dy; nt = s.t + dy; }
+    else if (s.dir === 'nw') { nw = s.w - dx; nl = s.l + dx; nh = s.h - dy; nt = s.t + dy; }
+    pasteOverlay.style.width  = Math.max(20, nw) + 'px';
+    pasteOverlay.style.height = Math.max(20, nh) + 'px';
+    pasteOverlay.style.left   = nl + 'px';
+    pasteOverlay.style.top    = nt + 'px';
   }
+  updatePasteHandles();
 });
 
 document.addEventListener('mouseup', () => {
@@ -2690,6 +2790,7 @@ document.addEventListener('mouseup', () => {
 
 function _removePasteOverlay() {
   if (pasteOverlay) { pasteOverlay.remove(); pasteOverlay = null; }
+  if (pasteHandles) { Object.values(pasteHandles).forEach(h => h.remove()); pasteHandles = null; }
   pasteOverlayWrap = null; pasteOverlayDrag = false; pasteOverlayRS = false;
 }
 
@@ -3272,7 +3373,7 @@ document.addEventListener('keydown', e => {
 });
 
 // Reposition format bar on scroll/resize
-document.getElementById('canvas')?.addEventListener('scroll', () => {
+document.getElementById('pdf-viewport')?.addEventListener('scroll', () => {
   if (activeTextAnno) showTextFmtBar(activeTextAnno);
 });
 window.addEventListener('resize', () => {
@@ -7180,6 +7281,663 @@ async function doCompress() {
     document.getElementById('comp-progress').style.display = 'none';
   }
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// ── AMÉLIORER LA QUALITÉ ─────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Real-ESRGAN ONNX ─────────────────────────────────────────────────────────
+const ESRGAN_MODEL_NAME = 'realesrgan-x4plus.onnx';
+// URLs de téléchargement — float32 en premier pour compatibilité maximale
+const ESRGAN_MODEL_URLS = [
+  'https://huggingface.co/imgdesignart/realesrgan-x4-onnx/resolve/main/onnx/model.onnx',
+  'https://huggingface.co/imgdesignart/realesrgan-x4-onnx/resolve/main/onnx/model_fp16.onnx',
+  'https://github.com/facefusion/facefusion-assets/releases/download/models-3.0.0/real_esrgan_x4plus.onnx',
+];
+const ESRGAN_TILE_DEFAULT = 256;
+const ESRGAN_SCALE_DEFAULT = 4;
+
+// ── ESPCN ONNX (rapide, ~337 Ko) ─────────────────────────────────────────────
+const ESPCN_MODEL_NAME = 'espcn-x4.onnx';
+const ESPCN_MODEL_URLS = [
+  'https://media.githubusercontent.com/media/onnx/models/main/validated/vision/super_resolution/sub_pixel_cnn_2016/model/super-resolution-10.onnx',
+  'https://huggingface.co/datasets/onnx/super-resolution/resolve/main/super-resolution-10.onnx',
+];
+let esrganSession  = null;
+let esrganTileH    = ESRGAN_TILE_DEFAULT;
+let esrganTileW    = ESRGAN_TILE_DEFAULT;
+let esrganChIn     = 3;
+let esrganScale    = ESRGAN_SCALE_DEFAULT;
+let esrganIsFloat16 = false; // le modèle attend-il du float16 ?
+
+// ── Conversion float32 ↔ float16 ────────────────────────────────────────────
+function _f32ToF16Array(src) {
+  const dst = new Uint16Array(src.length);
+  const f32 = new Float32Array(1);
+  const i32 = new Int32Array(f32.buffer);
+  for (let i = 0; i < src.length; i++) {
+    f32[0] = src[i];
+    const x    = i32[0];
+    const sign = (x >> 16) & 0x8000;
+    const exp  = ((x >> 23) & 0xff) - 127 + 15;
+    const mant = x & 0x7fffff;
+    if (exp <= 0)  { dst[i] = sign; continue; }
+    if (exp >= 31) { dst[i] = sign | 0x7c00; continue; }
+    dst[i] = sign | (exp << 10) | (mant >> 13);
+  }
+  return dst;
+}
+function _f16ToF32(v) {
+  const sign = (v & 0x8000) ? -1 : 1;
+  const exp  = (v >> 10) & 0x1f;
+  const mant = v & 0x3ff;
+  if (exp === 0)  return sign * Math.pow(2, -14) * (mant / 1024);
+  if (exp === 31) return mant ? NaN : sign * Infinity;
+  return sign * Math.pow(2, exp - 15) * (1 + mant / 1024);
+}
+
+function _showModelStatus(msg) {
+  const el = document.getElementById('enh-model-status');
+  if (el) { el.style.display = 'block'; el.textContent = msg; }
+}
+
+// Télécharge le modèle si absent, avec progression
+async function _ensureEsrganDownloaded(setP) {
+  const exists = await window.electronAPI.onnxModelExists(ESRGAN_MODEL_NAME);
+  if (exists) return;
+  _showModelStatus('⬇ Téléchargement du modèle Real-ESRGAN (~85 Mo)…');
+  window.electronAPI.removeAllListeners('onnx-progress');
+  let downloaded = false;
+  for (const url of ESRGAN_MODEL_URLS) {
+    try {
+      setP(2, `Téléchargement depuis ${new URL(url).hostname}…`);
+      window.electronAPI.onOnnxProgress(pct => {
+        setP(Math.round(pct * 0.55), `Téléchargement… ${pct}%`);
+        _showModelStatus(`⬇ Téléchargement… ${pct}%`);
+      });
+      const res = await window.electronAPI.onnxDownloadModel(url, ESRGAN_MODEL_NAME);
+      if (res && res.ok) { downloaded = true; break; }
+    } catch(e) { /* essayer URL suivante */ }
+  }
+  if (!downloaded) throw new Error(
+    'Téléchargement échoué sur toutes les sources.\n' +
+    'Placez manuellement "realesrgan-x4plus.onnx" dans userData/onnx-models/'
+  );
+  _showModelStatus('✅ Modèle téléchargé.');
+}
+
+async function _ensureEspcnDownloaded(setP) {
+  const exists = await window.electronAPI.onnxModelExists(ESPCN_MODEL_NAME);
+  if (exists) return;
+  _showModelStatus('⬇ Téléchargement du modèle ESPCN (~337 Ko)…');
+  window.electronAPI.removeAllListeners('onnx-progress');
+  let downloaded = false;
+  for (const url of ESPCN_MODEL_URLS) {
+    try {
+      setP(2, `Téléchargement ESPCN depuis ${new URL(url).hostname}…`);
+      window.electronAPI.onOnnxProgress(pct => {
+        setP(Math.round(pct * 0.1), `Téléchargement ESPCN… ${pct}%`);
+      });
+      const res = await window.electronAPI.onnxDownloadModel(url, ESPCN_MODEL_NAME);
+      if (res && res.ok) { downloaded = true; break; }
+    } catch(e) { /* essayer URL suivante */ }
+  }
+  if (!downloaded) throw new Error(
+    'Téléchargement ESPCN échoué. Vérifiez votre connexion.'
+  );
+  _showModelStatus('✅ Modèle ESPCN téléchargé.');
+}
+
+async function ensureEsrganSession(setP) {
+  if (esrganSession) return esrganSession;
+
+  if (typeof ort === 'undefined') throw new Error('onnxruntime-web non chargé');
+  const wasmBase = new URL('../node_modules/onnxruntime-web/dist/', window.location.href).href;
+  ort.env.wasm.wasmPaths = wasmBase;
+  ort.env.wasm.numThreads = 1;
+
+  const exists = await window.electronAPI.onnxModelExists(ESRGAN_MODEL_NAME);
+  if (!exists) {
+    _showModelStatus('⬇ Téléchargement du modèle Real-ESRGAN en cours…');
+    window.electronAPI.removeAllListeners('onnx-progress');
+
+    let downloaded = false;
+    for (const url of ESRGAN_MODEL_URLS) {
+      try {
+        setP(2, `Tentative : ${new URL(url).hostname}…`);
+        window.electronAPI.onOnnxProgress(pct => {
+          setP(Math.round(pct * 0.58), `Téléchargement… ${pct}%`);
+        });
+        const res = await window.electronAPI.onnxDownloadModel(url, ESRGAN_MODEL_NAME);
+        if (res && res.ok) { downloaded = true; break; }
+      } catch(e) { /* essayer URL suivante */ }
+    }
+    if (!downloaded) throw new Error(
+      'Téléchargement échoué sur toutes les sources.\n' +
+      'Placez manuellement "realesrgan-x4plus.onnx" dans le dossier userData/onnx-models/'
+    );
+  }
+
+  setP(60, 'Compilation WASM en cours — merci de patienter…');
+  _showModelStatus('⚙ Compilation du modèle en mémoire (peut prendre 30-60s)…');
+
+  // Animation de la barre pendant le chargement (bloquant)
+  let _animPct = 60;
+  const _animInterval = setInterval(() => {
+    _animPct = _animPct >= 94 ? 61 : _animPct + 0.5;
+    setP(Math.round(_animPct), 'Compilation WASM en cours — merci de patienter…');
+  }, 400);
+
+  try {
+    const modelPath = await window.electronAPI.onnxModelPath(ESRGAN_MODEL_NAME);
+    const fileUrl   = 'file:///' + modelPath.replace(/\\/g, '/');
+    esrganSession = await ort.InferenceSession.create(fileUrl, { executionProviders: ['wasm'] });
+  } finally {
+    clearInterval(_animInterval);
+  }
+
+  // ── Détecter automatiquement dimensions et canaux du modèle ──────────────
+  // On envoie une tuile 1×1 avec 3 canaux et on analyse l'erreur éventuelle
+  const inName  = esrganSession.inputNames[0];
+  const outName = esrganSession.outputNames[0];
+  const _parseDimError = (msg) => {
+    const regex = /index:\s*(\d+)\s+Got:\s*\d+\s+Expected:\s*(\d+)/g;
+    let m;
+    while ((m = regex.exec(msg)) !== null) {
+      const idx = parseInt(m[1]), val = parseInt(m[2]);
+      if (idx === 1) esrganChIn  = val;
+      if (idx === 2) esrganTileH = val;
+      if (idx === 3) esrganTileW = val;
+    }
+    if (esrganTileW === ESRGAN_TILE_DEFAULT && esrganTileH !== ESRGAN_TILE_DEFAULT)
+      esrganTileW = esrganTileH;
+  };
+
+  // Probe float32 d'abord
+  try {
+    const probe  = new ort.Tensor('float32', new Float32Array(3), [1, 3, 1, 1]);
+    const result = await esrganSession.run({ [inName]: probe });
+    esrganIsFloat16 = false;
+    esrganScale = result[outName].dims[2] || ESRGAN_SCALE_DEFAULT;
+    setP(64, `Modèle float32, scale ×${esrganScale}`);
+  } catch(e1) {
+    if (e1.message && e1.message.toLowerCase().includes('float16')) {
+      // Modèle fp16 — retenter avec float16
+      esrganIsFloat16 = true;
+      try {
+        const probe16 = new ort.Tensor('float16', _f32ToF16Array(new Float32Array(3)), [1, 3, 1, 1]);
+        const result  = await esrganSession.run({ [inName]: probe16 });
+        esrganScale = result[outName].dims[2] || ESRGAN_SCALE_DEFAULT;
+        setP(64, `Modèle float16, scale ×${esrganScale}`);
+      } catch(e2) { _parseDimError(e2.message); }
+    } else {
+      _parseDimError(e1.message);
+    }
+  }
+
+  _showModelStatus(`✅ Modèle chargé (${esrganTileH}×${esrganTileW}, ×${esrganScale})`);
+  return esrganSession;
+}
+
+// ── Amélioration via processus principal (onnxruntime-node natif) ────────────
+async function onnxRealESRGAN(srcCanvas, setP) {
+  // Enregistrer les listeners de progression
+  window.electronAPI.removeAllListeners('esrgan-progress');
+  window.electronAPI.removeAllListeners('esrgan-status');
+  window.electronAPI.onEsrganProgress(pct => setP(65 + Math.round(pct * 0.3), `Inférence… ${pct}%`));
+  window.electronAPI.onEsrganStatus(msg => setP(62, msg));
+
+  // Envoyer le canvas au main process comme PNG base64
+  setP(62, 'Envoi au moteur natif…');
+  const b64 = srcCanvas.toDataURL('image/png').split(',')[1];
+  const resultB64 = await window.electronAPI.onnxEnhanceImage(b64, 'image/png');
+
+  // Dessiner le résultat dans un nouveau canvas
+  const img = new Image();
+  await new Promise((res, rej) => {
+    img.onload = res; img.onerror = rej;
+    img.src = 'data:image/png;base64,' + resultB64;
+  });
+  const out = document.createElement('canvas');
+  out.width = img.naturalWidth; out.height = img.naturalHeight;
+  out.getContext('2d').drawImage(img, 0, 0);
+  return out;
+}
+
+async function onnxEspcn(srcCanvas, setP) {
+  window.electronAPI.removeAllListeners('esrgan-progress');
+  window.electronAPI.removeAllListeners('esrgan-status');
+  window.electronAPI.onEsrganProgress(pct => setP(65 + Math.round(pct * 0.3), `ESPCN… ${pct}%`));
+  window.electronAPI.onEsrganStatus(msg => setP(62, msg));
+
+  setP(60, 'Envoi au moteur ESPCN…');
+  const b64 = srcCanvas.toDataURL('image/png').split(',')[1];
+  const resultB64 = await window.electronAPI.onnxEspcnEnhance(b64, 'image/png');
+
+  const img = new Image();
+  await new Promise((res, rej) => {
+    img.onload = res; img.onerror = rej;
+    img.src = 'data:image/png;base64,' + resultB64;
+  });
+  const out = document.createElement('canvas');
+  out.width = img.naturalWidth; out.height = img.naturalHeight;
+  out.getContext('2d').drawImage(img, 0, 0);
+  return out;
+}
+
+// ── (ancien pipeline WASM — remplacé par IPC ci-dessus) ──────────────────────
+async function _onnxRealESRGAN_wasm_UNUSED(srcCanvas, setP) {
+  const session = await ensureEsrganSession(setP);
+  const inName  = session.inputNames[0];
+  const outName = session.outputNames[0];
+  const TH = esrganTileH, TW = esrganTileW;
+  const CHI = esrganChIn;
+  const w = srcCanvas.width, h = srcCanvas.height;
+  const srcCtx = srcCanvas.getContext('2d');
+  const srcPx  = srcCtx.getImageData(0, 0, w, h).data;
+
+  // Préparer les canaux source
+  // Canal Y (luminance) pour modèles 1-canal
+  const Ys  = CHI === 1 ? new Float32Array(w * h) : null;
+  const Cbs = CHI === 1 ? new Float32Array(w * h) : null;
+  const Crs = CHI === 1 ? new Float32Array(w * h) : null;
+  if (CHI === 1) {
+    for (let i = 0; i < w * h; i++) {
+      const r = srcPx[i*4], g = srcPx[i*4+1], b = srcPx[i*4+2];
+      Ys[i]  =  0.299*r + 0.587*g + 0.114*b;
+      Cbs[i] = -0.168736*r - 0.331264*g + 0.5*b + 128;
+      Crs[i] =  0.5*r - 0.418688*g - 0.081312*b + 128;
+    }
+  }
+
+  // Buffer de sortie Y (ou RGB)
+  const outW = Math.ceil(w * esrganScale), outH = Math.ceil(h * esrganScale);
+  const outY  = CHI === 1 ? new Float32Array(outW * outH) : null;
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = outW; outCanvas.height = outH;
+  const outCtx = outCanvas.getContext('2d');
+  const outImg = outCtx.createImageData(outW, outH);
+  const op = outImg.data;
+
+  const tilesX = Math.ceil(w / TW), tilesY = Math.ceil(h / TH);
+  const total = tilesX * tilesY;
+  let done = 0;
+
+  for (let ty = 0; ty < h; ty += TH) {
+    for (let tx = 0; tx < w; tx += TW) {
+      const tw = Math.min(TW, w - tx);
+      const th = Math.min(TH, h - ty);
+      // Padding si tuile plus petite que TW/TH (bords)
+      const needPad = tw < TW || th < TH;
+      const pH = needPad ? TH : th;
+      const pW = needPad ? TW : tw;
+
+      const buf = new Float32Array(CHI * pH * pW); // zéros = padding
+
+      if (CHI === 3) {
+        // RGB
+        for (let y = 0; y < th; y++)
+          for (let x = 0; x < tw; x++) {
+            const si = ((ty+y)*w + (tx+x))*4;
+            const pi = y*pW + x;
+            buf[pi]               = srcPx[si]   / 255;
+            buf[pH*pW + pi]       = srcPx[si+1] / 255;
+            buf[2*pH*pW + pi]     = srcPx[si+2] / 255;
+          }
+      } else {
+        // Y uniquement
+        for (let y = 0; y < th; y++)
+          for (let x = 0; x < tw; x++)
+            buf[y*pW + x] = Ys[(ty+y)*w + (tx+x)] / 255;
+      }
+
+      const tensorData = esrganIsFloat16 ? _f32ToF16Array(buf) : buf;
+      const tensorType = esrganIsFloat16 ? 'float16' : 'float32';
+      const input  = new ort.Tensor(tensorType, tensorData, [1, CHI, pH, pW]);
+      const result = await session.run({ [inName]: input });
+      const rawOut = result[outName].data;
+      const out    = esrganIsFloat16
+        ? Float32Array.from(rawOut, v => _f16ToF32(v))
+        : rawOut;
+      const outDims = result[outName].dims; // [1, C_out, oh, ow]
+      const actualScale = outDims[2] / pH;
+      const otw = Math.round(tw * actualScale), oth = Math.round(th * actualScale);
+      const opW  = outDims[3]; // largeur réelle de la tuile sortie (peut inclure padding)
+
+      if (CHI === 3) {
+        // Écrire RGB directement
+        for (let y = 0; y < oth; y++)
+          for (let x = 0; x < otw; x++) {
+            const oi = ((ty*actualScale + y|0)*outW + (tx*actualScale + x|0))*4;
+            const pi = y*opW + x;
+            op[oi]   = Math.min(255, Math.max(0, out[pi]                      * 255));
+            op[oi+1] = Math.min(255, Math.max(0, out[oth*opW + pi]            * 255));
+            op[oi+2] = Math.min(255, Math.max(0, out[2*oth*opW + pi]          * 255));
+            op[oi+3] = 255;
+          }
+      } else {
+        // Écrire Y (sera fusionné avec CbCr après)
+        for (let y = 0; y < oth; y++)
+          for (let x = 0; x < otw; x++)
+            outY[((ty*actualScale + y|0)*outW + (tx*actualScale + x|0))] =
+              Math.min(255, Math.max(0, out[y*opW + x] * 255));
+      }
+
+      done++;
+      setP(65 + Math.round(done/total*28), `Inférence… ${done}/${total} tuiles`);
+    }
+  }
+
+  if (CHI === 1) {
+    // Reconstruire RGB depuis Y upscalé + Cb/Cr upscalés par interpolation bilinéaire
+    const cbC = document.createElement('canvas'); cbC.width = w; cbC.height = h;
+    const crC = document.createElement('canvas'); crC.width = w; crC.height = h;
+    const cbD = cbC.getContext('2d').createImageData(w, h);
+    const crD = crC.getContext('2d').createImageData(w, h);
+    for (let i = 0; i < w*h; i++) {
+      const cb = Math.round(Cbs[i]), cr = Math.round(Crs[i]);
+      cbD.data[i*4]=cb; cbD.data[i*4+1]=cb; cbD.data[i*4+2]=cb; cbD.data[i*4+3]=255;
+      crD.data[i*4]=cr; crD.data[i*4+1]=cr; crD.data[i*4+2]=cr; crD.data[i*4+3]=255;
+    }
+    cbC.getContext('2d').putImageData(cbD, 0, 0);
+    crC.getContext('2d').putImageData(crD, 0, 0);
+    const upCb = document.createElement('canvas'); upCb.width=outW; upCb.height=outH;
+    const upCr = document.createElement('canvas'); upCr.width=outW; upCr.height=outH;
+    upCb.getContext('2d').drawImage(cbC, 0, 0, outW, outH);
+    upCr.getContext('2d').drawImage(crC, 0, 0, outW, outH);
+    const cbPx = upCb.getContext('2d').getImageData(0,0,outW,outH).data;
+    const crPx = upCr.getContext('2d').getImageData(0,0,outW,outH).data;
+    for (let i = 0; i < outW*outH; i++) {
+      const y = outY[i], cb = cbPx[i*4]-128, cr = crPx[i*4]-128;
+      op[i*4]   = Math.min(255, Math.max(0, y + 1.402*cr));
+      op[i*4+1] = Math.min(255, Math.max(0, y - 0.344136*cb - 0.714136*cr));
+      op[i*4+2] = Math.min(255, Math.max(0, y + 1.772*cb));
+      op[i*4+3] = 255;
+    }
+  }
+
+  outCtx.putImageData(outImg, 0, 0);
+  return outCanvas;
+}
+
+function openEnhancePanel() {
+  if (!currentPdfDoc) { t("Ouvrez un PDF d'abord"); return; }
+  const curPage = parseInt(document.getElementById('cur-page')?.textContent) || 1;
+  const np = currentPdfDoc.numPages;
+  document.getElementById('enh-page-info').innerHTML =
+    `Document : <b style="color:var(--gold)">${np} page${np>1?'s':''}</b> — Page courante : <b style="color:var(--gold)">${curPage}</b>`;
+  document.getElementById('enh-model-status').style.display = 'none';
+  document.getElementById('enh-progress').style.display = 'none';
+  document.getElementById('enh-result').style.display   = 'none';
+  document.getElementById('enh-btn').style.pointerEvents = '';
+  document.getElementById('enh-btn').innerHTML = '<i class="fa-solid fa-wand-sparkles"></i> Améliorer';
+  document.getElementById('enh-overlay').style.display  = 'flex';
+}
+
+function closeEnhancePanel() {
+  document.getElementById('enh-overlay').style.display = 'none';
+}
+
+// Applique un unsharp mask sur un canvas
+function _enhUnsharp(canvas, amount) {
+  const w = canvas.width, h = canvas.height;
+  const ctx = canvas.getContext('2d');
+  // Créer une version floutée
+  const blur = document.createElement('canvas');
+  blur.width = w; blur.height = h;
+  const bctx = blur.getContext('2d');
+  bctx.filter = 'blur(1.5px)';
+  bctx.drawImage(canvas, 0, 0);
+  bctx.filter = 'none';
+  const orig    = ctx.getImageData(0, 0, w, h);
+  const blurred = bctx.getImageData(0, 0, w, h);
+  const result  = ctx.createImageData(w, h);
+  for (let i = 0; i < orig.data.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      const diff = orig.data[i+c] - blurred.data[i+c];
+      result.data[i+c] = Math.min(255, Math.max(0, orig.data[i+c] + amount * diff));
+    }
+    result.data[i+3] = orig.data[i+3];
+  }
+  ctx.putImageData(result, 0, 0);
+}
+
+// Netteté qualité sans bruit : Gaussian large + USM fort
+// blurRadius > 1.5 → cible les bords structurels, pas le bruit de pixel
+function _enhSharpEdge(canvas, amount, blurRadius) {
+  blurRadius = blurRadius || 3;
+  const w = canvas.width, h = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const blur = document.createElement('canvas');
+  blur.width = w; blur.height = h;
+  const bctx = blur.getContext('2d');
+  bctx.filter = `blur(${blurRadius}px)`;
+  bctx.drawImage(canvas, 0, 0);
+  bctx.filter = 'none';
+  const orig    = ctx.getImageData(0, 0, w, h);
+  const blurred = bctx.getImageData(0, 0, w, h);
+  const result  = ctx.createImageData(w, h);
+  for (let i = 0; i < orig.data.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      const diff = orig.data[i+c] - blurred.data[i+c];
+      result.data[i+c] = Math.min(255, Math.max(0, orig.data[i+c] + amount * diff));
+    }
+    result.data[i+3] = orig.data[i+3];
+  }
+  ctx.putImageData(result, 0, 0);
+}
+
+// Applique contraste + saturation via filter
+function _enhContrast(canvas, contrast, saturation) {
+  const w = canvas.width, h = canvas.height;
+  const tmp = document.createElement('canvas');
+  tmp.width = w; tmp.height = h;
+  const ctx = tmp.getContext('2d');
+  ctx.filter = `contrast(${contrast}) saturate(${saturation})`;
+  ctx.drawImage(canvas, 0, 0);
+  ctx.filter = 'none';
+  const srcCtx = canvas.getContext('2d');
+  srcCtx.clearRect(0, 0, w, h);
+  srcCtx.drawImage(tmp, 0, 0);
+}
+
+// Parse une chaîne de pages "1,3,5-8" → [1,3,5,6,7,8]
+function _parsePageRange(str, max) {
+  const result = new Set();
+  str.split(',').forEach(part => {
+    part = part.trim();
+    const m = part.match(/^(\d+)-(\d+)$/);
+    if (m) {
+      for (let i = parseInt(m[1]); i <= parseInt(m[2]); i++) {
+        if (i >= 1 && i <= max) result.add(i);
+      }
+    } else {
+      const n = parseInt(part);
+      if (!isNaN(n) && n >= 1 && n <= max) result.add(n);
+    }
+  });
+  return Array.from(result).sort((a,b) => a-b);
+}
+
+// ── Amélioration OpenAI GPT-Image-1 (via IPC — main process, pas de CSP) ────
+async function _openaiImageEnhance(srcCanvas, apiKey, setP) {
+  const b64src = srcCanvas.toDataURL('image/png').split(',')[1];
+
+  // Écouter les mises à jour de progression depuis le main process
+  window.electronAPI.removeAllListeners('esrgan-status');
+  window.electronAPI.onEsrganStatus(msg => setP(30, msg));
+
+  setP(20, 'Envoi à OpenAI GPT-Image…');
+
+  const prompt =
+    'You are a pixel-level image restoration filter, not a designer. ' +
+    'This document page has blur, noise and compression artifacts. ' +
+    'Your ONLY permitted operation: make blurry/noisy pixels sharper and cleaner where they already stand. ' +
+    '' +
+    'ABSOLUTE CONSTRAINTS — any violation is a critical failure: ' +
+    '• Output layout must be pixel-identical to input: same margins, same spacing, same structure. ' +
+    '• Every text block must stay at the EXACT same position, same line breaks, same number of lines. ' +
+    '• Font sizes must not change by even 1pt — do not reflow a single word or line. ' +
+    '• Every photo/image element must keep its exact same bounding box and proportions. ' +
+    '• All colors must be reproduced exactly: same RGB values for text, backgrounds, graphics, logos. ' +
+    '• Do NOT reformat, redesign, reinterpret, modernize or apply any aesthetic judgment. ' +
+    '• Do NOT use your knowledge of "good document design" — ignore it entirely. ' +
+    '' +
+    'Mental model: you are a camera lens sharpening focus on a fixed scene. ' +
+    'The scene does not move. Nothing is added or removed. Only clarity improves.';
+
+  // Appel via IPC (main process) pour contourner la CSP du renderer
+  const json = await window.electronAPI.openaiImageEnhance(b64src, apiKey, prompt);
+
+  setP(80, 'Réception et décodage…');
+  const item = json.data?.[0];
+  if (!item) throw new Error('Réponse OpenAI vide');
+
+  const resultB64 = item.b64_json;
+  if (!resultB64) throw new Error('Aucune image base64 retournée par OpenAI');
+
+  const img = new Image();
+  await new Promise((res, rej) => {
+    img.onload = res; img.onerror = rej;
+    img.src = 'data:image/png;base64,' + resultB64;
+  });
+  const out = document.createElement('canvas');
+  out.width  = img.naturalWidth;
+  out.height = img.naturalHeight;
+  out.getContext('2d').drawImage(img, 0, 0);
+  return out;
+}
+
+async function doEnhance() {
+  if (!currentPdfData || !currentPdfDoc) return;
+  const btn = document.getElementById('enh-btn');
+  btn.style.pointerEvents = 'none';
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+  document.getElementById('enh-progress').style.display = 'block';
+  document.getElementById('enh-result').style.display   = 'none';
+
+  const setP = (pct, txt) => {
+    document.getElementById('enh-bar').style.width = pct + '%';
+    document.getElementById('enh-progress-txt').textContent = txt;
+  };
+
+  try {
+    const level   = document.querySelector('input[name="enh-level"]:checked')?.value || 'standard';
+    const scope   = document.querySelector('input[name="enh-scope"]:checked')?.value || 'current';
+    const np      = currentPdfDoc.numPages;
+    const curPage = parseInt(document.getElementById('cur-page')?.textContent) || 1;
+
+    // Pages à traiter
+    let pages;
+    if (scope === 'current') {
+      pages = [curPage];
+    } else {
+      const rangeStr = document.getElementById('enh-range').value.trim() || String(curPage);
+      pages = _parsePageRange(rangeStr, np);
+    }
+    if (!pages.length) { t('Aucune page valide'); return; }
+
+    // ── Vérification modèle / clé API selon le niveau choisi ───────────────────
+    setP(0, 'Vérification…');
+    let openaiApiKey = '';
+    if (level === 'optimal') {
+      openaiApiKey = await _getAIKey();
+      if (!openaiApiKey) {
+        t('Clé API OpenAI manquante — configurez-la dans Paramètres (⚙)');
+        return;
+      }
+    } else if (level === 'espcn') {
+      await _ensureEspcnDownloaded(setP);
+    } else {
+      await _ensureEsrganDownloaded(setP);
+    }
+
+    const { PDFDocument } = PDFLib;
+    const doc = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
+
+    // Ordre décroissant : les insertions n'affectent pas les indices suivants
+    const sortedDesc = [...pages].sort((a, b) => b - a);
+
+    for (let pi = 0; pi < sortedDesc.length; pi++) {
+      const pageNum = sortedDesc[pi];
+      const baseP   = Math.round((pi / sortedDesc.length) * 60);
+      setP(baseP, `Rendu page ${pageNum}…`);
+
+      // Pré-render (scale 2× pour Optimal = meilleure entrée API, 1× pour les autres)
+      const renderScale = level === 'optimal' ? 2 : 1;
+      const pdfJsPage = await currentPdfDoc.getPage(pageNum);
+      const vp = pdfJsPage.getViewport({ scale: renderScale });
+      const offscreen = document.createElement('canvas');
+      offscreen.width  = vp.width;
+      offscreen.height = vp.height;
+      await pdfJsPage.render({ canvasContext: offscreen.getContext('2d'), viewport: vp }).promise;
+
+      let finalCanvas;
+      if (level === 'optimal') {
+        _showModelStatus('✨ Envoi à GPT-Image-1…');
+        finalCanvas = await _openaiImageEnhance(offscreen, openaiApiKey, (pct, txt) => {
+          setP(baseP + Math.round(pct * 0.35), txt);
+        });
+      } else if (level === 'espcn') {
+        _showModelStatus('⚙ Inférence ESPCN…');
+        finalCanvas = await onnxEspcn(offscreen, (pct, txt) => {
+          setP(baseP + Math.round(pct * 0.35), txt);
+        });
+        _enhSharpEdge(finalCanvas, 2.8, 3);
+        _enhContrast(finalCanvas, 1.08, 1.0);
+      } else {
+        _showModelStatus('⚙ Inférence Real-ESRGAN…');
+        finalCanvas = await onnxRealESRGAN(offscreen, (pct, txt) => {
+          setP(baseP + Math.round(pct * 0.35), txt);
+        });
+        if (level === 'maximum') {
+          _enhUnsharp(finalCanvas, 1.2);
+          _enhContrast(finalCanvas, 1.08, 1.04);
+        }
+      }
+
+      // Convertir en PNG
+      const imgBytes = base64ToBytes(finalCanvas.toDataURL('image/png').split(',')[1]);
+
+      // Insérer la page améliorée APRÈS l'originale
+      const origPg = doc.getPages()[pageNum - 1];
+      const { width: pgW, height: pgH } = origPg.getSize();
+      const pngImg  = await doc.embedPng(imgBytes);
+      const newPage = doc.insertPage(pageNum, [pgW, pgH]);
+      newPage.drawImage(pngImg, { x: 0, y: 0, width: pgW, height: pgH });
+
+      setP(Math.round((pi + 1) / sortedDesc.length * 95), `Page ${pageNum} améliorée ✓`);
+    }
+
+    setP(97, 'Sauvegarde…');
+    const newBytes = await doc.save();
+    const newB64   = bytesToBase64(newBytes);
+    setP(100, 'Terminé');
+
+    closeEnhancePanel();
+    await renderPDFFromData({
+      name: currentPdfName,
+      size: Math.round(newBytes.length * 0.75),
+      data: newB64,
+      filePath: currentFilePath
+    }, true);
+
+    const modelLabel = level === 'optimal' ? 'GPT-Image-1 (OpenAI)'
+      : level === 'espcn' ? 'ESPCN 4×'
+      : `Real-ESRGAN 4×${level === 'maximum' ? ' + netteté' : ''}`;
+    document.getElementById('enh-result').style.display = 'block';
+    document.getElementById('enh-result').innerHTML =
+      `✅ <b>${pages.length} page${pages.length>1?'s':''}</b> améliorée${pages.length>1?'s':''} — ${modelLabel}.`;
+
+    _logMod('Pages améliorées ' + modelLabel, pages.join(', '));
+  } catch(e) {
+    t('Erreur : ' + e.message); console.error(e);
+  } finally {
+    btn.style.pointerEvents = '';
+    btn.innerHTML = '<i class="fa-solid fa-wand-sparkles"></i> Améliorer';
+  }
+}
+
 
 // ═════════════════════════════════════════════════════════════════════════════
 // ── MESURES & COTATION ───────────────────────────────────────────────────────

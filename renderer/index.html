@@ -23,6 +23,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
 <!-- pdf-lib : création de PDF -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="../node_modules/onnxruntime-web/dist/ort.min.js"></script>
 </head>
 <body>
 
@@ -183,6 +184,7 @@
       <div class="mi">Outils
         <div class="md">
           <div class="mdi" onclick="openCompressPanel()"><i class="fa-solid fa-file-zipper"></i>Compresser</div>
+          <div class="mdi" onclick="openEnhancePanel()"><i class="fa-solid fa-wand-sparkles"></i>Amélioration IA</div>
           <div class="mdi" onclick="openLayersPanel()"><i class="fa-solid fa-layer-group"></i>Calques</div>
           <div class="mdi" onclick="openMediaPanel()"><i class="fa-solid fa-film"></i>Vidéo / Audio / 3D</div>
           <div class="msep"></div>
@@ -316,6 +318,7 @@
       <div id="tab-list"></div>
       <div class="tab-add-btn" onclick="openFile()" title="Ouvrir un document (+)">＋</div>
     </div>
+    <div id="pdf-viewport">
     <div id="drop-zone" onclick="openFile()">
       <svg width="70" height="70" viewBox="0 0 70 70" style="opacity:.6">
         <g stroke="#C8962E" fill="none" stroke-width="1.2">
@@ -370,6 +373,7 @@
 
     <!-- ═══ BARRE OUTILS DESSIN ═══ -->
     <div id="draw-tb" style="display:none;position:fixed;bottom:52px;left:50%;transform:translateX(-50%);z-index:500;background:var(--bg-toolbar);border:1px solid var(--gold-border);border-radius:8px;padding:6px 12px;gap:6px;align-items:center;flex-wrap:wrap;box-shadow:0 4px 20px rgba(0,0,0,.55)"></div>
+    </div><!-- #pdf-viewport -->
 
   </main>
 
@@ -1459,6 +1463,79 @@
   </div>
 </div>
 
+<!-- ═══ AMÉLIORATION IA ═══════════════════════════════════════════════════════ -->
+<div id="enh-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:11000;align-items:center;justify-content:center">
+  <div id="enh-panel">
+    <div class="fp-hdr">
+      <span><i class="fa-solid fa-wand-sparkles" style="color:var(--gold);margin-right:8px"></i>Amélioration IA</span>
+      <span onclick="closeEnhancePanel()" style="cursor:pointer;color:var(--txt2)"><i class="fa-solid fa-xmark"></i></span>
+    </div>
+    <div style="padding:18px 22px">
+      <div id="enh-page-info" style="margin-bottom:16px;padding:10px 14px;background:rgba(0,0,0,.2);border-radius:4px;font-size:.78rem;color:var(--txt2)"></div>
+
+      <div class="sum-section-title">Page(s) à améliorer</div>
+      <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.8rem">
+          <input type="radio" name="enh-scope" value="current" checked> Page courante
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.8rem">
+          <input type="radio" name="enh-scope" value="range"> Pages :
+        </label>
+        <input id="enh-range" type="text" placeholder="ex : 1,3,5-8" style="flex:1;min-width:120px;background:rgba(0,0,0,.3);border:1px solid var(--gold-border);color:var(--txt);border-radius:4px;padding:4px 8px;font-size:.78rem">
+      </div>
+
+      <div class="sum-section-title">Niveau d'amélioration</div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px">
+        <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:10px 12px;border:1px solid rgba(200,150,46,.3);border-radius:4px;background:rgba(200,150,46,.05)">
+          <input type="radio" name="enh-level" value="espcn" checked style="margin-top:3px">
+          <div>
+            <div style="font-size:.82rem;color:var(--txt);font-weight:600"><i class="fa-solid fa-bolt" style="color:var(--gold);margin-right:5px"></i>Rapide — ESPCN 4× <span style="font-size:.68rem;color:var(--gold);font-weight:400">(~337 Ko)</span></div>
+            <div style="font-size:.72rem;color:var(--txt2);margin-top:2px">Super-résolution légère et quasi-instantanée. Idéal pour PDFs texte et documents nets.</div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:10px 12px;border:1px solid rgba(100,200,150,.25);border-radius:4px;background:rgba(100,200,150,.04)">
+          <input type="radio" name="enh-level" value="standard" style="margin-top:3px">
+          <div>
+            <div style="font-size:.82rem;color:var(--txt);font-weight:600"><i class="fa-solid fa-microchip" style="color:#4ec97a;margin-right:5px"></i>Standard — Real-ESRGAN 4×</div>
+            <div style="font-size:.72rem;color:var(--txt2);margin-top:2px">Super-résolution IA. Résolution quadruplée, détails reconstruits par réseau de neurones.</div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:10px 12px;border:1px solid rgba(100,200,150,.25);border-radius:4px;background:rgba(100,200,150,.04)">
+          <input type="radio" name="enh-level" value="maximum" style="margin-top:3px">
+          <div>
+            <div style="font-size:.82rem;color:var(--txt);font-weight:600"><i class="fa-solid fa-microchip" style="color:#4ec97a;margin-right:5px"></i>Maximum — Real-ESRGAN 4× + netteté + contraste</div>
+            <div style="font-size:.72rem;color:var(--txt2);margin-top:2px">IA + unsharp mask intensif + boost contraste. Meilleur rendu sur photos et illustrations.</div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;padding:10px 12px;border:1px solid rgba(147,112,219,.35);border-radius:4px;background:rgba(147,112,219,.06)">
+          <input type="radio" name="enh-level" value="optimal" style="margin-top:3px">
+          <div>
+            <div style="font-size:.82rem;color:var(--txt);font-weight:600"><i class="fa-solid fa-wand-magic-sparkles" style="color:#b07fff;margin-right:5px"></i>Optimal — GPT-Image IA <span style="font-size:.68rem;color:#b07fff;font-weight:400">(OpenAI)</span></div>
+            <div style="font-size:.72rem;color:var(--txt2);margin-top:2px">Amélioration par GPT-Image-1 d'OpenAI. Netteté et qualité maximales. Nécessite une clé API configurée dans Paramètres.</div>
+          </div>
+        </label>
+      </div>
+
+      <div id="enh-model-status" style="display:none;padding:8px 12px;background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.3);border-radius:4px;font-size:.75rem;color:var(--txt2);margin-bottom:12px"></div>
+
+      <div id="enh-progress" style="display:none">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <i class="fa-solid fa-spinner fa-spin" style="color:var(--gold)"></i>
+          <span id="enh-progress-txt" style="font-size:.78rem;color:var(--txt2)">Amélioration en cours…</span>
+        </div>
+        <div style="height:4px;background:rgba(255,255,255,.1);border-radius:2px">
+          <div id="enh-bar" style="height:100%;width:0%;background:var(--gold);border-radius:2px;transition:width .3s"></div>
+        </div>
+      </div>
+      <div id="enh-result" style="display:none;padding:10px 14px;background:rgba(46,204,113,.08);border:1px solid rgba(46,204,113,.3);border-radius:4px;font-size:.78rem"></div>
+    </div>
+    <div class="fp-footer">
+      <div class="mbtn" onclick="closeEnhancePanel()">Annuler</div>
+      <div class="mbtn ok" id="enh-btn" onclick="doEnhance()"><i class="fa-solid fa-wand-sparkles"></i> Améliorer</div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ MESURES & COTATION ══════════════════════════════════════════════════ -->
 <div id="msr-bar" style="display:none;position:fixed;bottom:60px;left:50%;transform:translateX(-50%);z-index:9000;background:var(--bg-panel);border:1px solid var(--gold);border-radius:6px;padding:7px 14px;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.5);flex-wrap:wrap">
   <span style="font-family:'Cinzel',serif;font-size:.63rem;color:var(--gold);letter-spacing:.1em;white-space:nowrap">MESURES</span>
@@ -1659,3 +1736,4 @@
 
 </body>
 </html>
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
