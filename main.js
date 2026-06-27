@@ -861,6 +861,30 @@ ipcMain.handle('onnx-download-model', async (event, { url, name }) => {
 });
 
 
+// ── inflate / deflate pour la suppression de filigranes ──────────────────────
+const zlib = require('zlib');
+
+ipcMain.handle('pdf-inflate', async (event, { b64 }) => {
+  const buf = Buffer.from(b64, 'base64');
+  try {
+    return { b64: zlib.inflateSync(buf).toString('base64'), ok: true };
+  } catch(_) {
+    try {
+      return { b64: zlib.inflateRawSync(buf).toString('base64'), ok: true };
+    } catch(e) {
+      return { b64: null, ok: false, err: e.message };
+    }
+  }
+});
+
+ipcMain.handle('pdf-deflate', async (event, { b64 }) => {
+  const buf = Buffer.from(b64, 'base64');
+  const out = zlib.deflateSync(buf);
+  return { b64: out.toString('base64'), ok: true };
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function getPdfFromArgv(argv) {
   return argv.slice(1).find(a => !a.startsWith('-') && a.toLowerCase().endsWith('.pdf')) || null;
 }

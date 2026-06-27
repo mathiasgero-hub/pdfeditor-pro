@@ -9044,39 +9044,32 @@ function closeRemoveWMPanel() {
   document.getElementById('rmwm-overlay').style.display = 'none';
 }
 
-// ── helpers inflate/deflate (Web Streams API, disponible dans Electron/Chromium)
+// ── helpers inflate/deflate via Node.js zlib (IPC → main process) ────────────
+function _u8ToB64(arr) {
+  let s = '';
+  const bytes = arr instanceof Uint8Array ? arr : new Uint8Array(arr);
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s);
+}
+function _b64ToU8(b64) {
+  const s = atob(b64);
+  const out = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+  return out;
+}
+
 async function _pdfInflate(data) {
-  const arr = data instanceof Uint8Array ? data : new Uint8Array(data);
-  for (const fmt of ['deflate', 'deflate-raw']) {
-    try {
-      const ds = new DecompressionStream(fmt);
-      const wr = ds.writable.getWriter();
-      wr.write(arr); wr.close();
-      const rd = ds.readable.getReader();
-      const chunks = [];
-      while (true) { const { done, value } = await rd.read(); if (done) break; chunks.push(value); }
-      const total = chunks.reduce((a, c) => a + c.length, 0);
-      const out = new Uint8Array(total);
-      let off = 0;
-      for (const c of chunks) { out.set(c, off); off += c.length; }
-      return out;
-    } catch(e) { if (fmt === 'deflate-raw') throw e; }
-  }
+  const b64 = _u8ToB64(data instanceof Uint8Array ? data : new Uint8Array(data));
+  const res = await window.electronAPI.pdfInflate(b64);
+  if (!res.ok) throw new Error(res.err || 'inflate failed');
+  return _b64ToU8(res.b64);
 }
 
 async function _pdfDeflate(data) {
-  const arr = data instanceof Uint8Array ? data : new Uint8Array(data);
-  const cs = new CompressionStream('deflate');
-  const wr = cs.writable.getWriter();
-  wr.write(arr); wr.close();
-  const rd = cs.readable.getReader();
-  const chunks = [];
-  while (true) { const { done, value } = await rd.read(); if (done) break; chunks.push(value); }
-  const total = chunks.reduce((a, c) => a + c.length, 0);
-  const out = new Uint8Array(total);
-  let off = 0;
-  for (const c of chunks) { out.set(c, off); off += c.length; }
-  return out;
+  const b64 = _u8ToB64(data instanceof Uint8Array ? data : new Uint8Array(data));
+  const res = await window.electronAPI.pdfDeflate(b64);
+  if (!res.ok) throw new Error('deflate failed');
+  return _b64ToU8(res.b64);
 }
 
 // ── tokeniseur de flux de contenu PDF ────────────────────────────────────────

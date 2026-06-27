@@ -85,4 +85,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openaiImageEnhance: (imageBase64, apiKey, prompt) =>
     ipcRenderer.invoke('openai-image-enhance', { imageBase64, apiKey, prompt }),
 
+  // ─── zlib inflate/deflate pour suppression filigranes ────────────────────
+  pdfInflate: (b64) => ipcRenderer.invoke('pdf-inflate', { b64 }),
+  pdfDeflate: (b64) => ipcRenderer.invoke('pdf-deflate', { b64 }),
+
 });
