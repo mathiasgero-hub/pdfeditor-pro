@@ -9153,15 +9153,18 @@ function _wmFilterTokens(tokens, lowOpGS, opts) {
         if (tk.t === 'o' && (tk.v === 'Do' || tk.v === 'BI')) hasImages = true;
         j++;
       }
-      // Taille du bloc en tokens (hors q et Q)
+      // Taille du bloc (entre q et Q, exclus)
       const blockTokens = j - i - 1;
-      // Un filigrane est un PETIT bloc (< 300 tokens) — les blocs de contenu principal
-      // sont bien plus grands : ne pas les supprimer même s'ils semblent correspondre.
+      // Seuls les petits blocs sont des candidats filigrane (< 300 tokens)
       const isSmallBlock = blockTokens < 300;
 
-      // Supprimer seulement si : petit bloc + opacité basse
-      //                       OU petit bloc + rotation forte + texte uniquement
-      if (isSmallBlock && (lowOp || (removeRotated && hasRot && hasText && !hasImages))) {
+      // Critère rotation : texte diagonal + pas d'image + petit bloc
+      const matchRot = removeRotated && hasRot && hasText && !hasImages && isSmallBlock;
+      // Critère opacité : UNIQUEMENT si la rotation est AUSSI présente (évite les faux positifs)
+      // Car beaucoup de PDFs utilisent des ExtGState < threshold pour du contenu normal.
+      const matchOp  = lowOp && hasRot && hasText && !hasImages && isSmallBlock;
+
+      if (matchRot || matchOp) {
         i = j + 1; // ignorer tout le bloc q…Q
       } else {
         out.push(tokens[i]); // q
