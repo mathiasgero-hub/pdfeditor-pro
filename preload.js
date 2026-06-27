@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Retirer les listeners (nettoyage)
   removeAllListeners: (channel) => { ipcRenderer.removeAllListeners(channel); },
 
+  // ─── Signal renderer prêt ────────────────────────────────────────────────────
+  rendererReady: () => ipcRenderer.invoke('renderer-ready'),
+
   // ─── Parametres OCR ──────────────────────────────────────────────────────────
   openImageDialog: ()       => ipcRenderer.invoke('open-image-dialog'),
   printPDF:  (pdfData)      => ipcRenderer.invoke('print-pdf', { pdfData }),
@@ -88,5 +91,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ─── zlib inflate/deflate pour suppression filigranes ────────────────────
   pdfInflate: (b64) => ipcRenderer.invoke('pdf-inflate', { b64 }),
   pdfDeflate: (b64) => ipcRenderer.invoke('pdf-deflate', { b64 }),
+
+  // ─── OpenAI inpainting (suppression filigrane scanné) ────────────────────
+  openaiImageInpaint: (imageB64, maskB64, prompt, apiKey) =>
+    ipcRenderer.invoke('openai-image-inpaint', { imageB64, maskB64, prompt, apiKey }),
 
 });

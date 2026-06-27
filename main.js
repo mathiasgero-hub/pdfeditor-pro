@@ -9,6 +9,7 @@ const https = require('https');
 const http  = require('http');
 
 let mainWindow;
+let pendingFilePath = null; // fichier à ouvrir dès que le renderer est prêt
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -18,6 +19,7 @@ function createWindow() {
     minHeight: 600,
     title: 'PDFEditor',
     backgroundColor: '#111C1C',
+    show: false, // évite le flash blanc au démarrage
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -25,6 +27,11 @@ function createWindow() {
     }
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+
+  // Afficher la fenêtre seulement quand elle est visuellement prête
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
 
   // ─── Menu contextuel natif (clic droit) ──────────────────────────────────────
   // Electron desactive le menu natif par defaut ; on le restaure avec Copier/Coller
@@ -815,6 +822,82 @@ ipcMain.handle('openai-image-enhance', async (event, { imageBase64, apiKey, prom
   });
 });
 
+// ─── IPC : OpenAI inpainting (suppression filigrane scanné) ──────────────────
+ipcMain.handle('openai-image-inpaint', async (event, { imageB64, maskB64, prompt, apiKey }) => {
+  // gpt-image-1 : image opaque originale + masque séparé (alpha=0 = zones à reconstruire)
+  const imageBuffer = Buffer.from(imageB64, 'base64');
+  const maskBuffer  = Buffer.from(maskB64,  'base64');
+  const boundary    = '----OAInpaintBoundary' + Date.now().toString(16);
+  const CRLF        = '\r\n';
+
+  const textField = (name, value) => Buffer.from(
+    `--${boundary}${CRLF}Content-Disposition: form-data; name="${name}"${CRLF}${CRLF}${value}${CRLF}`,
+    'utf8'
+  );
+  const fileField = (name, filename, data) => Buffer.concat([
+    Buffer.from(
+      `--${boundary}${CRLF}` +
+      `Content-Disposition: form-data; name="${name}"; filename="${filename}"${CRLF}` +
+      `Content-Type: image/png${CRLF}${CRLF}`,
+      'utf8'
+    ),
+    data,
+    Buffer.from(CRLF, 'utf8'),
+  ]);
+
+  const body = Buffer.concat([
+    textField('model',   'gpt-image-1'),
+    textField('prompt',  prompt),
+    textField('n',    '1'),
+    textField('size', '1024x1024'),
+    fileField('image', 'page.png', imageBuffer),
+    fileField('mask',  'mask.png', maskBuffer),
+    Buffer.from(`--${boundary}--${CRLF}`, 'utf8'),
+  ]);
+
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'api.openai.com',
+      path:     '/v1/images/edits',
+      method:   'POST',
+      headers: {
+        'Authorization':  `Bearer ${apiKey}`,
+        'Content-Type':   `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': body.length,
+      },
+    }, (res) => {
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => {
+        try {
+          const text = Buffer.concat(chunks).toString('utf8');
+          const json = JSON.parse(text);
+          if (res.statusCode !== 200) {
+            reject(new Error(json.error?.message || 'HTTP ' + res.statusCode + ': ' + text.slice(0, 300)));
+            return;
+          }
+          // Résultat : b64_json direct ou URL à télécharger
+          const item = json.data?.[0];
+          if (!item) { reject(new Error('Réponse IA vide')); return; }
+          if (item.b64_json) { resolve({ data: [{ b64_json: item.b64_json }] }); return; }
+          // Télécharger l'image depuis l'URL retournée
+          https.get(item.url, (imgRes) => {
+            const parts = [];
+            imgRes.on('data', c => parts.push(c));
+            imgRes.on('end', () => {
+              resolve({ data: [{ b64_json: Buffer.concat(parts).toString('base64') }] });
+            });
+          }).on('error', reject);
+        } catch(e) { reject(e); }
+      });
+    });
+    req.setTimeout(240000, () => req.destroy(new Error('Timeout OpenAI inpainting (240s)')));
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+});
+
 // ─── IPC : Modèle ONNX ───────────────────────────────────────────────────────
 function getModelsDir() {
   const dir = path.join(app.getPath('userData'), 'onnx-models');
@@ -886,14 +969,28 @@ ipcMain.handle('pdf-deflate', async (event, { b64 }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getPdfFromArgv(argv) {
+  // Dans l'app packagée, argv[0] = exe, argv[1] = chemin du PDF éventuellement
+  // On cherche le premier argument non-flag qui se termine par .pdf
   return argv.slice(1).find(a => !a.startsWith('-') && a.toLowerCase().endsWith('.pdf')) || null;
 }
 
-// Single-instance
+// ─── Signal renderer-ready : le renderer prévient main qu'il est initialisé ──
+// Cela évite tout timeout arbitraire pour envoyer le fichier au démarrage.
+ipcMain.handle('renderer-ready', () => {
+  if (pendingFilePath) {
+    const fp = pendingFilePath;
+    pendingFilePath = null;
+    sendFileToRenderer(fp);
+  }
+});
+
+// ─── Single-instance lock ─────────────────────────────────────────────────────
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
+  // Une instance tourne déjà — on lui passe le fichier et on quitte
   app.quit();
 } else {
+  // Quand l'utilisateur double-clique sur un PDF alors que l'app tourne déjà
   app.on('second-instance', (event, argv) => {
     const filePath = getPdfFromArgv(argv);
     if (mainWindow) {
@@ -904,24 +1001,22 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    // Mémoriser le fichier AVANT de créer la fenêtre
+    pendingFilePath = getPdfFromArgv(process.argv);
     createWindow();
-    const filePath = getPdfFromArgv(process.argv);
-    if (filePath) {
-      mainWindow.webContents.once('did-finish-load', () => {
-        setTimeout(() => sendFileToRenderer(filePath), 300);
-      });
-    }
+    // Le fichier sera envoyé par le handler renderer-ready ci-dessus,
+    // une fois que le renderer aura terminé loadLang() et son initialisation.
   });
 
   app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
+  // macOS : ouverture via Finder
   app.on('open-file', (event, filePath) => {
     event.preventDefault();
-    if (mainWindow && mainWindow.webContents) {
-      mainWindow.webContents.once('did-finish-load', () => {
-        setTimeout(() => sendFileToRenderer(filePath), 300);
-      });
-      if (!mainWindow.webContents.isLoading()) sendFileToRenderer(filePath);
+    if (mainWindow && !mainWindow.webContents.isLoading()) {
+      sendFileToRenderer(filePath);
+    } else {
+      pendingFilePath = filePath;
     }
   });
 

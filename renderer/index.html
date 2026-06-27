@@ -46,6 +46,85 @@
   </div>
 </div>
 
+<!-- ═══ PANNEAU TAILLE DE LA PAGE ═══ -->
+<div id="pgsize-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:11000;align-items:center;justify-content:center;">
+  <div id="pgsize-panel">
+    <div class="pgsize-hdr">
+      <span><i class="fa-solid fa-ruler-combined" style="margin-right:8px;color:var(--gold)"></i>Taille de la page</span>
+      <span onclick="closePageSizePanel()" style="cursor:pointer;color:var(--txt2);font-size:1rem;padding:4px 6px"><i class="fa-solid fa-xmark"></i></span>
+    </div>
+
+    <!-- Sélecteur de page -->
+    <div class="pgsize-row" style="border-bottom:1px solid rgba(200,150,46,.18);padding-bottom:12px;margin-bottom:4px">
+      <label class="pgsize-lbl" data-i18n="pgsize.page">Page</label>
+      <select id="pgsize-page" class="pgsize-sel" onchange="pgSizeLoadPage()"></select>
+      <span id="pgsize-total" style="color:var(--txt2);font-size:.8rem;margin-left:4px"></span>
+    </div>
+
+    <!-- Unité -->
+    <div class="pgsize-row" style="margin-bottom:12px">
+      <label class="pgsize-lbl" data-i18n="pgsize.unit">Unité</label>
+      <div class="pgsize-unit-btns">
+        <button id="pgsize-px-btn"  class="pgsize-ubtn act" onclick="pgSizeSetUnit('px')">px</button>
+        <button id="pgsize-cm-btn"  class="pgsize-ubtn"     onclick="pgSizeSetUnit('cm')">cm</button>
+      </div>
+      <span style="color:var(--txt2);font-size:.75rem;margin-left:8px" id="pgsize-unit-note">1 pt = 1 px (72 dpi)</span>
+    </div>
+
+    <!-- Dimensions -->
+    <div class="pgsize-dims">
+      <div class="pgsize-dim-group">
+        <label class="pgsize-lbl" data-i18n="pgsize.width">Largeur</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="number" id="pgsize-w" class="pgsize-input" min="1" step="0.01" oninput="pgSizeWChanged()">
+          <span class="pgsize-unit-tag" id="pgsize-utag-w">px</span>
+        </div>
+      </div>
+
+      <!-- Bouton verrou -->
+      <div style="display:flex;align-items:center;justify-content:center;padding-top:18px">
+        <button id="pgsize-lock-btn" class="pgsize-lock act" onclick="pgSizeToggleLock()" title="Verrouiller les proportions">
+          <i class="fa-solid fa-lock" id="pgsize-lock-ico"></i>
+        </button>
+      </div>
+
+      <div class="pgsize-dim-group">
+        <label class="pgsize-lbl" data-i18n="pgsize.height">Hauteur</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="number" id="pgsize-h" class="pgsize-input" min="1" step="0.01" oninput="pgSizeHChanged()">
+          <span class="pgsize-unit-tag" id="pgsize-utag-h">px</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Formats rapides -->
+    <div style="margin:14px 0 4px;font-size:.78rem;color:var(--txt2)" data-i18n="pgsize.presets">Formats rapides :</div>
+    <div class="pgsize-presets">
+      <button class="pgsize-preset" onclick="pgSizePreset(595.28,841.89)">A4</button>
+      <button class="pgsize-preset" onclick="pgSizePreset(419.53,595.28)">A5</button>
+      <button class="pgsize-preset" onclick="pgSizePreset(841.89,1190.55)">A3</button>
+      <button class="pgsize-preset" onclick="pgSizePreset(612,792)">Letter</button>
+      <button class="pgsize-preset" onclick="pgSizePreset(612,1008)">Legal</button>
+      <button class="pgsize-preset" onclick="pgSizePreset(1224,792)">Tabloid</button>
+    </div>
+
+    <!-- Appliquer à -->
+    <div class="pgsize-row" style="margin-top:14px">
+      <label class="pgsize-lbl" data-i18n="pgsize.scope">Appliquer à</label>
+      <select id="pgsize-scope" class="pgsize-sel">
+        <option value="current">Page courante seulement</option>
+        <option value="all">Toutes les pages</option>
+      </select>
+    </div>
+
+    <!-- Pied -->
+    <div class="pgsize-footer">
+      <div class="mbtn" onclick="closePageSizePanel()" data-i18n="btn.cancel">Annuler</div>
+      <div class="mbtn ok" onclick="applyPageSize()"><i class="fa-solid fa-check"></i> <span data-i18n="btn.apply">Appliquer</span></div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ PANNEAU FUSION ═══ -->
 <div id="merge-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:11000;align-items:center;justify-content:center;">
   <div id="merge-panel">
@@ -102,117 +181,119 @@
     </div>
 
     <nav id="menu-bar">
-      <div class="mi">Fichier
+      <div class="mi"><span data-i18n="menu.file">Fichier</span>
         <div class="md">
-          <div class="mdi" onclick="menuAction('new')"><i class="fa-regular fa-file"></i>Nouveau<span class="kbd">⌘N</span></div>
-          <div class="mdi" onclick="openFile()"><i class="fa-regular fa-folder-open"></i>Ouvrir un PDF…<span class="kbd">⌘O</span></div>
-          <div class="mdi" onclick="importImageOCR()"><i class="fa-solid fa-image"></i>Importer image → PDF (OCR)<span style="font-size:.6rem;opacity:.6;margin-left:auto">JPG·PNG·WebP</span></div>
+          <div class="mdi" onclick="menuAction('new')"><i class="fa-regular fa-file"></i><span data-i18n="menu.new">Nouveau</span><span class="kbd">⌘N</span></div>
+          <div class="mdi" onclick="openFile()"><i class="fa-regular fa-folder-open"></i><span data-i18n="menu.open">Ouvrir un PDF…</span><span class="kbd">⌘O</span></div>
+          <div class="mdi" onclick="importImageOCR()"><i class="fa-solid fa-image"></i><span data-i18n="menu.import_ocr">Importer image → PDF (OCR)</span><span style="font-size:.6rem;opacity:.6;margin-left:auto">JPG·PNG·WebP</span></div>
           <div class="msep"></div>
-          <div class="mdi" onclick="menuAction('save')"><i class="fa-regular fa-floppy-disk"></i>Enregistrer<span class="kbd">⌘S</span></div>
-          <div class="mdi" onclick="menuAction('saveAs')"><i class="fa-solid fa-floppy-disk"></i>Enregistrer sous…<span class="kbd">⇧⌘S</span></div>
-          <div class="mdi" onclick="openModal('Exporter','PDF/A · PDF/X · Word · Excel · PowerPoint · HTML · PNG · JPEG')"><i class="fa-solid fa-file-export"></i>Exporter vers…</div>
+          <div class="mdi" onclick="menuAction('save')"><i class="fa-regular fa-floppy-disk"></i><span data-i18n="menu.save">Enregistrer</span><span class="kbd">⌘S</span></div>
+          <div class="mdi" onclick="menuAction('saveAs')"><i class="fa-solid fa-floppy-disk"></i><span data-i18n="menu.save_as">Enregistrer sous…</span><span class="kbd">⇧⌘S</span></div>
+          <div class="mdi" onclick="openModal('Exporter','PDF/A · PDF/X · Word · Excel · PowerPoint · HTML · PNG · JPEG')"><i class="fa-solid fa-file-export"></i><span data-i18n="menu.export">Exporter vers…</span></div>
           <div class="msep"></div>
-          <div class="mdi" onclick="openModal('Traitement par lots','Compression, conversion, protection, filigrane, OCR sur des dizaines de fichiers simultanément.')"><i class="fa-solid fa-layer-group"></i>Traitement par lots</div>
-          <div class="mdi" onclick="repairPDF()"><i class="fa-solid fa-screwdriver-wrench"></i>Réparer un PDF corrompu</div>
+          <div class="mdi" onclick="openModal('Traitement par lots','Compression, conversion, protection, filigrane, OCR sur des dizaines de fichiers simultanément.')"><i class="fa-solid fa-layer-group"></i><span data-i18n="menu.batch">Traitement par lots</span></div>
+          <div class="mdi" onclick="repairPDF()"><i class="fa-solid fa-screwdriver-wrench"></i><span data-i18n="menu.repair">Réparer un PDF corrompu</span></div>
           <div class="msep"></div>
-          <div class="mdi" onclick="printCurrentPDF()"><i class="fa-solid fa-print"></i>Imprimer…<span class="kbd">⌘P</span></div>
-          <div class="mdi" onclick="t('Au revoir !')"><i class="fa-solid fa-arrow-right-from-bracket"></i>Quitter<span class="kbd">⌘Q</span></div>
+          <div class="mdi" onclick="printCurrentPDF()"><i class="fa-solid fa-print"></i><span data-i18n="menu.print">Imprimer…</span><span class="kbd">⌘P</span></div>
+          <div class="mdi" onclick="t('Au revoir !')"><i class="fa-solid fa-arrow-right-from-bracket"></i><span data-i18n="menu.quit">Quitter</span><span class="kbd">⌘Q</span></div>
         </div>
       </div>
-      <div class="mi">Édition
+      <div class="mi"><span data-i18n="menu.edit">Édition</span>
         <div class="md">
-          <div class="mdi" onclick="undoPDF()"><i class="fa-solid fa-rotate-left"></i>Annuler<span class="kbd">⌘Z</span></div>
-          <div class="mdi" onclick="redoPDF()"><i class="fa-solid fa-rotate-right"></i>Rétablir<span class="kbd">⇧⌘Z</span></div>
+          <div class="mdi" onclick="undoPDF()"><i class="fa-solid fa-rotate-left"></i><span data-i18n="menu.undo">Annuler</span><span class="kbd">⌘Z</span></div>
+          <div class="mdi" onclick="redoPDF()"><i class="fa-solid fa-rotate-right"></i><span data-i18n="menu.redo">Rétablir</span><span class="kbd">⇧⌘Z</span></div>
           <div class="msep"></div>
-          <div class="mdi" onclick="t('Couper')"><i class="fa-solid fa-scissors"></i>Couper<span class="kbd">⌘X</span></div>
-          <div class="mdi" onclick="t('Copié')"><i class="fa-regular fa-copy"></i>Copier<span class="kbd">⌘C</span></div>
-          <div class="mdi" onclick="t('Collé')"><i class="fa-solid fa-paste"></i>Coller<span class="kbd">⌘V</span></div>
+          <div class="mdi" onclick="menuCut()"  ><i class="fa-solid fa-scissors"></i><span data-i18n="menu.cut">Couper</span><span class="kbd">⌘X</span></div>
+          <div class="mdi" onclick="menuCopy()" ><i class="fa-regular fa-copy"></i><span data-i18n="menu.copy">Copier</span><span class="kbd">⌘C</span></div>
+          <div class="mdi" onclick="menuPaste()"><i class="fa-solid fa-paste"></i><span data-i18n="menu.paste">Coller</span><span class="kbd">⌘V</span></div>
+          <div class="mdi" onclick="menuPasteExternal()"><i class="fa-solid fa-image"></i><span data-i18n="menu.paste_ext">Collage externe</span></div>
           <div class="msep"></div>
-          <div class="mdi" onclick="t('Rechercher…')"><i class="fa-solid fa-magnifying-glass"></i>Rechercher &amp; Remplacer<span class="kbd">⌘H</span></div>
-          <div class="mdi" onclick="startRedactMode()"><i class="fa-solid fa-eraser"></i>Biffure définitive</div>
+          <div class="mdi" onclick="t('Rechercher…')"><i class="fa-solid fa-magnifying-glass"></i><span data-i18n="menu.find">Rechercher &amp; Remplacer</span><span class="kbd">⌘H</span></div>
+          <div class="mdi" onclick="startRedactMode()"><i class="fa-solid fa-eraser"></i><span data-i18n="menu.redact">Biffure définitive</span></div>
         </div>
       </div>
-      <div class="mi">Pages
+      <div class="mi"><span data-i18n="menu.pages">Pages</span>
         <div class="md">
-          <div class="mdi" onclick="openMergePanel()"><i class="fa-solid fa-code-merge"></i>Fusionner des PDFs</div>
+          <div class="mdi" onclick="openMergePanel()"><i class="fa-solid fa-code-merge"></i><span data-i18n="menu.merge">Fusionner des PDFs</span></div>
           <div class="msep"></div>
-          <div class="mdi" onclick="rotatePage(90)"><i class="fa-solid fa-rotate"></i>Pivoter</div>
+          <div class="mdi" onclick="openPageSizePanel()"><i class="fa-solid fa-ruler-combined"></i><span data-i18n="menu.pagesize">Taille de la page</span></div>
+          <div class="mdi" onclick="rotatePage(90)"><i class="fa-solid fa-rotate"></i><span data-i18n="menu.rotate">Pivoter</span></div>
           <div class="msep"></div>
-          <div class="mdi" onclick="openBkmgrPanel()"><i class="fa-solid fa-bookmark"></i>Gérer les signets</div>
-          <div class="mdi" onclick="t('Table des matières générée')"><i class="fa-solid fa-list-ol"></i>Table des matières</div>
-          <div class="mdi" onclick="openBatesPanel()"><i class="fa-regular fa-id-badge"></i>Numérotation Bates</div>
+          <div class="mdi" onclick="openBkmgrPanel()"><i class="fa-solid fa-bookmark"></i><span data-i18n="menu.bookmarks">Gérer les signets</span></div>
+          <div class="mdi" onclick="t('Table des matières générée')"><i class="fa-solid fa-list-ol"></i><span data-i18n="menu.toc">Table des matières</span></div>
+          <div class="mdi" onclick="openBatesPanel()"><i class="fa-regular fa-id-badge"></i><span data-i18n="menu.bates">Numérotation Bates</span></div>
           <div class="msep"></div>
-          <div class="mdi" onclick="openHFPanel()"><i class="fa-solid fa-heading"></i>En-têtes &amp; Pieds de page</div>
-          <div class="mdi" onclick="openWMPanel()"><i class="fa-solid fa-stamp"></i>Filigranes &amp; Tampons</div>
+          <div class="mdi" onclick="openHFPanel()"><i class="fa-solid fa-heading"></i><span data-i18n="menu.header_footer">En-têtes &amp; Pieds de page</span></div>
+          <div class="mdi" onclick="openWMPanel()"><i class="fa-solid fa-stamp"></i><span data-i18n="menu.watermark">Filigranes &amp; Tampons</span></div>
           <div class="msep"></div>
-          <div class="mdi" onclick="openRemoveWMPanel()"><i class="fa-solid fa-eraser"></i>Supprimer les filigranes</div>
+          <div class="mdi" onclick="openRemoveWMPanel()"><i class="fa-solid fa-eraser"></i><span data-i18n="menu.remove_wm">Supprimer les filigranes</span></div>
         </div>
       </div>
       <div class="mi">Révision
         <div class="md">
-          <div class="mdi" onclick="setTool(null,'Surligner')"><i class="fa-solid fa-highlighter"></i>Surligner</div>
-          <div class="mdi" onclick="setTool(null,'Note')"><i class="fa-regular fa-comment"></i>Ajouter une note</div>
-          <div class="mdi" onclick="setTool(null,'Stylo')"><i class="fa-solid fa-pen-nib"></i>Dessiner</div>
-          <div class="mdi" onclick="setTool(null,'Formes')"><i class="fa-solid fa-shapes"></i>Formes &amp; Flèches</div>
+          <div class="mdi" onclick="setTool(null,'Surligner')"><i class="fa-solid fa-highlighter"></i><span data-i18n="menu.highlight">Surligner</span></div>
+          <div class="mdi" onclick="setTool(null,'Note')"><i class="fa-regular fa-comment"></i><span data-i18n="menu.note">Ajouter une note</span></div>
+          <div class="mdi" onclick="setTool(null,'Stylo')"><i class="fa-solid fa-pen-nib"></i><span data-i18n="menu.draw">Dessiner</span></div>
+          <div class="mdi" onclick="setTool(null,'Formes')"><i class="fa-solid fa-shapes"></i><span data-i18n="menu.shapes">Formes &amp; Flèches</span></div>
           <div class="msep"></div>
-          <div class="mdi" onclick="openComparePanel()"><i class="fa-solid fa-code-compare"></i>Comparer deux versions</div>
-          <div class="mdi" onclick="openHistoryPanel()"><i class="fa-solid fa-clock-rotate-left"></i>Historique des modifications</div>
+          <div class="mdi" onclick="openComparePanel()"><i class="fa-solid fa-code-compare"></i><span data-i18n="menu.compare">Comparer deux versions</span></div>
+          <div class="mdi" onclick="openHistoryPanel()"><i class="fa-solid fa-clock-rotate-left"></i><span data-i18n="menu.history">Historique des modifications</span></div>
           <div class="msep"></div>
         </div>
       </div>
-      <div class="mi">Sécurité
+      <div class="mi"><span data-i18n="menu.security">Sécurité</span>
         <div class="md">
-          <div class="mdi" onclick="openEncryptPanel()"><i class="fa-solid fa-lock"></i>Chiffrer</div>
-          <div class="mdi" onclick="t('Mot de passe…')"><i class="fa-solid fa-key"></i>Mot de passe</div>
-          <div class="mdi" onclick="openEncryptPanel()"><i class="fa-solid fa-shield"></i>Restreindre les droits</div>
+          <div class="mdi" onclick="openEncryptPanel()"><i class="fa-solid fa-lock"></i><span data-i18n="menu.encrypt">Chiffrer</span></div>
+          <div class="mdi" onclick="t('Mot de passe…')"><i class="fa-solid fa-key"></i><span data-i18n="menu.password">Mot de passe</span></div>
+          <div class="mdi" onclick="openEncryptPanel()"><i class="fa-solid fa-shield"></i><span data-i18n="menu.restrict">Restreindre les droits</span></div>
           <div class="msep"></div>
-          <div class="mdi" onclick="startRedactMode()"><i class="fa-solid fa-eye-slash"></i>Biffure permanente</div>
-          <div class="mdi" onclick="openMetaPanel()"><i class="fa-solid fa-broom"></i>Métadonnées</div>
+          <div class="mdi" onclick="startRedactMode()"><i class="fa-solid fa-eye-slash"></i><span data-i18n="menu.redact_perm">Biffure permanente</span></div>
+          <div class="mdi" onclick="openMetaPanel()"><i class="fa-solid fa-broom"></i><span data-i18n="menu.metadata">Métadonnées</span></div>
           <div class="msep"></div>
-          <div class="mdi" onclick="openSigPanel()"><i class="fa-solid fa-signature"></i>Signature électronique</div>
+          <div class="mdi" onclick="openSigPanel()"><i class="fa-solid fa-signature"></i><span data-i18n="menu.sign">Signature électronique</span></div>
           <div class="mdi" onclick="openCertPanel()"><i class="fa-solid fa-certificate"></i>Certificat &amp; Horodatage</div>
         </div>
       </div>
-      <div class="mi">IA
+      <div class="mi"><span data-i18n="menu.ia">IA</span>
         <div class="md">
-          <div class="mdi" onclick="openSummarizePanel()"><i class="fa-solid fa-wand-magic-sparkles"></i>Résumer le document</div>
-          <div class="mdi" onclick="openTranslatePanel()"><i class="fa-solid fa-language"></i>Traduire (40+ langues)</div>
-          <div class="mdi" onclick="activatePDFChat()"><i class="fa-solid fa-message"></i>Discuter avec le PDF</div>
+          <div class="mdi" onclick="openSummarizePanel()"><i class="fa-solid fa-wand-magic-sparkles"></i><span data-i18n="menu.summarize_doc">Résumer le document</span></div>
+          <div class="mdi" onclick="openTranslatePanel()"><i class="fa-solid fa-language"></i><span data-i18n="menu.translate_doc">Traduire (40+ langues)</span></div>
+          <div class="mdi" onclick="activatePDFChat()"><i class="fa-solid fa-message"></i><span data-i18n="menu.chat_pdf">Discuter avec le PDF</span></div>
           <div class="msep"></div>
-          <div class="mdi" onclick="ocrCurrentPDF()"><i class="fa-solid fa-font"></i>Reconnaître (OCR)</div>
-          <div class="mdi" onclick="openExtractTablePanel()"><i class="fa-solid fa-table"></i>Extraire tableaux</div>
+          <div class="mdi" onclick="ocrCurrentPDF()"><i class="fa-solid fa-font"></i><span data-i18n="menu.ocr_rec">Reconnaître (OCR)</span></div>
+          <div class="mdi" onclick="openExtractTablePanel()"><i class="fa-solid fa-table"></i><span data-i18n="menu.extract_tables">Extraire tableaux</span></div>
         </div>
       </div>
-      <div class="mi">Outils
+      <div class="mi"><span data-i18n="menu.tools">Outils</span>
         <div class="md">
-          <div class="mdi" onclick="openCompressPanel()"><i class="fa-solid fa-file-zipper"></i>Compresser</div>
-          <div class="mdi" onclick="openEnhancePanel()"><i class="fa-solid fa-wand-sparkles"></i>Amélioration IA</div>
-          <div class="mdi" onclick="openLayersPanel()"><i class="fa-solid fa-layer-group"></i>Calques</div>
-          <div class="mdi" onclick="openMediaPanel()"><i class="fa-solid fa-film"></i>Vidéo / Audio / 3D</div>
+          <div class="mdi" onclick="openCompressPanel()"><i class="fa-solid fa-file-zipper"></i><span data-i18n="menu.compress">Compresser</span></div>
+          <div class="mdi" onclick="openEnhancePanel()"><i class="fa-solid fa-wand-sparkles"></i><span data-i18n="menu.enhance_ia">Amélioration IA</span></div>
+          <div class="mdi" onclick="openLayersPanel()"><i class="fa-solid fa-layer-group"></i><span data-i18n="menu.layers">Calques</span></div>
+          <div class="mdi" onclick="openMediaPanel()"><i class="fa-solid fa-film"></i><span data-i18n="menu.media">Vidéo / Audio / 3D</span></div>
           <div class="msep"></div>
-          <div class="mdi" onclick="openMeasurePanel()"><i class="fa-solid fa-ruler"></i>Mesures &amp; Cotation</div>
-          <div class="mdi" onclick="openICCPanel()"><i class="fa-solid fa-palette"></i>Gestion couleurs (ICC)</div>
-          <div class="mdi" onclick="openPreflightPanel()"><i class="fa-solid fa-magnifying-glass-chart"></i>Préflighting</div>
+          <div class="mdi" onclick="openMeasurePanel()"><i class="fa-solid fa-ruler"></i><span data-i18n="menu.measure">Mesures &amp; Cotation</span></div>
+          <div class="mdi" onclick="openICCPanel()"><i class="fa-solid fa-palette"></i><span data-i18n="menu.color_mgmt">Gestion couleurs (ICC)</span></div>
+          <div class="mdi" onclick="openPreflightPanel()"><i class="fa-solid fa-magnifying-glass-chart"></i><span data-i18n="menu.preflight">Préflighting</span></div>
           <div class="msep"></div>
-          <div class="mdi" onclick="openA11yPanel()"><i class="fa-solid fa-universal-access"></i>Accessibilité</div>
-          <div class="mdi" onclick="openPDFStdPanel()"><i class="fa-solid fa-file-shield"></i>PDF/A · X · E · UA</div>
+          <div class="mdi" onclick="openA11yPanel()"><i class="fa-solid fa-universal-access"></i><span data-i18n="menu.accessibility">Accessibilité</span></div>
+          <div class="mdi" onclick="openPDFStdPanel()"><i class="fa-solid fa-file-shield"></i><span data-i18n="menu.pdf_std">PDF/A · X · E · UA</span></div>
         </div>
       </div>
-      <div class="mi">Affichage
+      <div class="mi"><span data-i18n="menu.view">Affichage</span>
         <div class="md">
-          <div class="mdi" onclick="zoom(1)"><i class="fa-solid fa-magnifying-glass-plus"></i>Zoom avant<span class="kbd">⌘+</span></div>
-          <div class="mdi" onclick="zoom(-1)"><i class="fa-solid fa-magnifying-glass-minus"></i>Zoom arrière<span class="kbd">⌘–</span></div>
-          <div class="mdi" onclick="fitToPage()"><i class="fa-solid fa-expand"></i>Adapter à la page<span class="kbd">⌘0</span></div>
+          <div class="mdi" onclick="zoom(1)"><i class="fa-solid fa-magnifying-glass-plus"></i><span data-i18n="menu.zoom_in">Zoom avant</span><span class="kbd">⌘+</span></div>
+          <div class="mdi" onclick="zoom(-1)"><i class="fa-solid fa-magnifying-glass-minus"></i><span data-i18n="menu.zoom_out">Zoom arrière</span><span class="kbd">⌘–</span></div>
+          <div class="mdi" onclick="fitToPage()"><i class="fa-solid fa-expand"></i><span data-i18n="menu.fit_page">Adapter à la page</span><span class="kbd">⌘0</span></div>
           <div class="msep"></div>
-          <div class="mdi" id="mdi-double-page" onclick="toggleDoublePage()"><i class="fa-solid fa-table-columns"></i>Page double</div>
-          <div class="mdi" id="mdi-fullscreen" onclick="toggleFullscreen()"><i class="fa-regular fa-window-maximize" id="ico-fullscreen"></i><span id="lbl-fullscreen">Plein écran</span><span class="kbd">⌘F</span></div>
+          <div class="mdi" id="mdi-double-page" onclick="toggleDoublePage()"><i class="fa-solid fa-table-columns"></i><span data-i18n="menu.double_page">Page double</span></div>
+          <div class="mdi" id="mdi-fullscreen" onclick="toggleFullscreen()"><i class="fa-regular fa-window-maximize" id="ico-fullscreen"></i><span id="lbl-fullscreen" data-i18n="menu.fullscreen">Plein écran</span><span class="kbd">⌘F</span></div>
         </div>
       </div>
     </nav>
 
     <div id="hdr-right">
-      <div class="hbtn" data-tip="Paramètres" onclick="openOcrSettings()"><i class="fa-solid fa-gear"></i></div>
-      <div class="hbtn" data-tip="Aide &amp; raccourcis clavier" onclick="openHelpModal()"><i class="fa-regular fa-circle-question"></i></div>
+      <div class="hbtn" data-tip="Paramètres" data-i18n-tip="tip.settings" onclick="openOcrSettings()"><i class="fa-solid fa-gear"></i></div>
+      <div class="hbtn" data-tip="Aide &amp; raccourcis clavier" data-i18n-tip="tip.help" onclick="openHelpModal()"><i class="fa-regular fa-circle-question"></i></div>
     </div>
   </div>
   <svg id="hdr-svg" viewBox="0 0 300 50" xmlns="http://www.w3.org/2000/svg">
@@ -225,42 +306,42 @@
 
 <!-- ═══ TOOLBAR ═══ -->
 <div id="tbar">
-  <span class="tgl">Fichier</span>
-  <div class="tb" data-tip="Nouveau document (⌘N)" onclick="menuAction('new')"><i class="fa-regular fa-file"></i></div>
-  <div class="tb" data-tip="Ouvrir un PDF depuis l'ordinateur (⌘O)" onclick="openFile()"><i class="fa-regular fa-folder-open"></i></div>
-  <div class="tb" data-tip="Enregistrer (⌘S)" onclick="menuAction('save')"><i class="fa-regular fa-floppy-disk"></i></div>
-  <div class="tb" data-tip="Imprimer (⌘P)" onclick="printCurrentPDF()"><i class="fa-solid fa-print"></i></div>
+  <span class="tgl" data-i18n="tgl.file">Fichier</span>
+  <div class="tb" data-tip="Nouveau document (⌘N)" data-i18n-tip="tip.new" onclick="menuAction('new')"><i class="fa-regular fa-file"></i></div>
+  <div class="tb" data-tip="Ouvrir un PDF depuis l'ordinateur (⌘O)" data-i18n-tip="tip.open" onclick="openFile()"><i class="fa-regular fa-folder-open"></i></div>
+  <div class="tb" data-tip="Enregistrer (⌘S)" data-i18n-tip="tip.save" onclick="menuAction('save')"><i class="fa-regular fa-floppy-disk"></i></div>
+  <div class="tb" data-tip="Imprimer (⌘P)" data-i18n-tip="tip.print" onclick="printCurrentPDF()"><i class="fa-solid fa-print"></i></div>
   <div class="tsep"></div>
-  <div class="tb dis" id="btn-undo" data-tip="Annuler la dernière action (⌘Z)" onclick="undoPDF()"><i class="fa-solid fa-rotate-left"></i></div>
-  <div class="tb dis" id="btn-redo" data-tip="Rétablir (⇧⌘Z)" onclick="redoPDF()"><i class="fa-solid fa-rotate-right"></i></div>
+  <div class="tb dis" id="btn-undo" data-tip="Annuler la dernière action (⌘Z)" data-i18n-tip="tip.undo" onclick="undoPDF()"><i class="fa-solid fa-rotate-left"></i></div>
+  <div class="tb dis" id="btn-redo" data-tip="Rétablir (⇧⌘Z)" data-i18n-tip="tip.redo" onclick="redoPDF()"><i class="fa-solid fa-rotate-right"></i></div>
   <div class="tsep"></div>
-  <span class="tgl">Édition</span>
-  <div class="tb" data-tip="Sélectionner et déplacer des éléments" onclick="setTool(this,'Sélection')"><i class="fa-solid fa-arrow-pointer"></i></div>
-  <div class="tb" data-tip="Modifier le texte directement dans le PDF" onclick="setTool(this,'Texte')"><i class="fa-solid fa-t"></i></div>
-  <div class="tb" data-tip="Insérer ou déplacer une image" onclick="setTool(this,'Image')"><i class="fa-regular fa-image"></i></div>
-  <div class="tb" data-tip="Dessiner à main levée" onclick="setTool(this,'Stylo')"><i class="fa-solid fa-pen-nib"></i></div>
-  <div class="tb" data-tip="Ajouter des formes et flèches" onclick="setTool(this,'Formes')"><i class="fa-regular fa-square"></i></div>
+  <span class="tgl" data-i18n="tgl.edit">Édition</span>
+  <div class="tb" data-tip="Sélectionner et déplacer des éléments" data-i18n-tip="tip.select" onclick="setTool(this,'Sélection')"><i class="fa-solid fa-arrow-pointer"></i></div>
+  <div class="tb" data-tip="Modifier le texte directement dans le PDF" data-i18n-tip="tip.text" onclick="setTool(this,'Texte')"><i class="fa-solid fa-t"></i></div>
+  <div class="tb" data-tip="Insérer ou déplacer une image" data-i18n-tip="tip.image" onclick="setTool(this,'Image')"><i class="fa-regular fa-image"></i></div>
+  <div class="tb" data-tip="Dessiner à main levée" data-i18n-tip="tip.draw" onclick="setTool(this,'Stylo')"><i class="fa-solid fa-pen-nib"></i></div>
+  <div class="tb" data-tip="Ajouter des formes et flèches" data-i18n-tip="tip.shapes" onclick="setTool(this,'Formes')"><i class="fa-regular fa-square"></i></div>
   <div class="tsep"></div>
-  <span class="tgl">Révision</span>
-  <div class="tb" data-tip="Surligner du texte (touche H)" onclick="setTool(this,'Surligner')"><i class="fa-solid fa-highlighter"></i></div>
-  <div class="tb" data-tip="Ajouter un commentaire ou une note" onclick="setTool(this,'Note')"><i class="fa-regular fa-comment"></i></div>
-  <div class="tb" data-tip="Biffure — masquer définitivement du texte (touche E)" onclick="setTool(this,'Biffure')"><i class="fa-solid fa-eraser"></i></div>
+  <span class="tgl" data-i18n="tgl.review">Révision</span>
+  <div class="tb" data-tip="Surligner du texte (touche H)" data-i18n-tip="tip.highlight" onclick="setTool(this,'Surligner')"><i class="fa-solid fa-highlighter"></i></div>
+  <div class="tb" data-tip="Ajouter un commentaire ou une note" data-i18n-tip="tip.note" onclick="setTool(this,'Note')"><i class="fa-regular fa-comment"></i></div>
+  <div class="tb" data-tip="Biffure — masquer définitivement du texte (touche E)" data-i18n-tip="tip.redact" onclick="setTool(this,'Biffure')"><i class="fa-solid fa-eraser"></i></div>
   <div class="tsep"></div>
-  <span class="tgl">Pages</span>
-  <div class="tb" data-tip="Fusionner plusieurs PDFs en un seul" onclick="openMergePanel()"><i class="fa-solid fa-code-merge"></i></div>
-  <div class="tb" data-tip="Pivoter la page de 90°" onclick="rotatePage(90)"><i class="fa-solid fa-rotate"></i></div>
+  <span class="tgl" data-i18n="tgl.pages">Pages</span>
+  <div class="tb" data-tip="Fusionner plusieurs PDFs en un seul" data-i18n-tip="tip.merge" onclick="openMergePanel()"><i class="fa-solid fa-code-merge"></i></div>
+  <div class="tb" data-tip="Pivoter la page de 90°" data-i18n-tip="tip.rotate" onclick="rotatePage(90)"><i class="fa-solid fa-rotate"></i></div>
   <div class="tsep"></div>
-  <span class="tgl">Avancé</span>
-  <div class="tb" data-tip="OCR — reconnaître le texte d'un scan" onclick="ocrCurrentPDF()"><i class="fa-solid fa-font"></i></div>
-  <div class="tb" data-tip="Compresser le fichier (–20% à –80%)" onclick="openCompressPanel()"><i class="fa-solid fa-file-zipper"></i></div>
-  <div class="tb" data-tip="Comparer deux versions du même document" onclick="openComparePanel()"><i class="fa-solid fa-code-compare"></i></div>
-  <div class="tb" data-tip="Résumé IA — analyse intelligente du document" onclick="t('Résumé IA…')"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
-  <div class="tb" data-tip="Traitement par lots — action sur plusieurs fichiers" onclick="t('Lots…')"><i class="fa-solid fa-layer-group"></i></div>
-  <div class="tb" data-tip="Mesurer distances, surfaces et angles" onclick="setTool(this,'Mesures')"><i class="fa-solid fa-ruler"></i></div>
+  <span class="tgl" data-i18n="tgl.advanced">Avancé</span>
+  <div class="tb" data-tip="OCR — reconnaître le texte d'un scan" data-i18n-tip="tip.ocr" onclick="ocrCurrentPDF()"><i class="fa-solid fa-font"></i></div>
+  <div class="tb" data-tip="Compresser le fichier (–20% à –80%)" data-i18n-tip="tip.compress" onclick="openCompressPanel()"><i class="fa-solid fa-file-zipper"></i></div>
+  <div class="tb" data-tip="Comparer deux versions du même document" data-i18n-tip="tip.compare" onclick="openComparePanel()"><i class="fa-solid fa-code-compare"></i></div>
+  <div class="tb" data-tip="Résumé IA — analyse intelligente du document" data-i18n-tip="tip.summarize" onclick="t('Résumé IA…')"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+  <div class="tb" data-tip="Traitement par lots — action sur plusieurs fichiers" data-i18n-tip="tip.batch" onclick="t('Lots…')"><i class="fa-solid fa-layer-group"></i></div>
+  <div class="tb" data-tip="Mesurer distances, surfaces et angles" data-i18n-tip="tip.measure" onclick="setTool(this,'Mesures')"><i class="fa-solid fa-ruler"></i></div>
   <div class="tsep"></div>
-  <span class="tgl">Sécurité</span>
-  <div class="tb" data-tip="Chiffrer et protéger par mot de passe (AES-256)" onclick="openEncryptPanel()"><i class="fa-solid fa-lock"></i></div>
-  <div class="tb" data-tip="Apposer une signature électronique" onclick="openSigPanel()"><i class="fa-solid fa-signature"></i></div>
+  <span class="tgl" data-i18n="tgl.security">Sécurité</span>
+  <div class="tb" data-tip="Chiffrer et protéger par mot de passe (AES-256)" data-i18n-tip="tip.encrypt" onclick="openEncryptPanel()"><i class="fa-solid fa-lock"></i></div>
+  <div class="tb" data-tip="Apposer une signature électronique" data-i18n-tip="tip.sign" onclick="openSigPanel()"><i class="fa-solid fa-signature"></i></div>
 </div>
 
 <!-- ═══ MAIN ═══ -->
@@ -269,27 +350,27 @@
   <!-- Panneau gauche -->
   <aside id="lp">
     <div class="ptabs">
-      <div class="pt act" onclick="lTab('th',this)">Vues</div>
-      <div class="pt" onclick="lTab('bk',this)">Signets</div>
-      <div class="pt" onclick="lTab('ff',this)">Champs</div>
+      <div class="pt act" onclick="lTab('th',this)" data-i18n="lp.views">Vues</div>
+      <div class="pt" onclick="lTab('bk',this)" data-i18n="lp.bookmarks">Signets</div>
+      <div class="pt" onclick="lTab('ff',this)" data-i18n="lp.fields">Champs</div>
     </div>
     <div class="pcnt">
       <div id="tab-th" class="pv act">
         <!-- Barre d'opérations sur les pages -->
         <div id="page-ops-bar">
           <div class="pop-row">
-            <div class="pop-btn dis" id="pop-copy"  onclick="copyPage()"    title="Copier la page (1 seule)"><i class="fa-regular fa-copy"></i>Copier</div>
-            <div class="pop-btn dis" id="pop-paste" onclick="pastePage()"   title="Coller après"><i class="fa-solid fa-paste"></i>Coller</div>
-            <div class="pop-btn dis" id="pop-up"    onclick="movePage(-1)"  title="Monter"><i class="fa-solid fa-arrow-up"></i>Monter</div>
-            <div class="pop-btn dis" id="pop-dn"    onclick="movePage(1)"   title="Descendre"><i class="fa-solid fa-arrow-down"></i>Descendre</div>
-            <div class="pop-btn dis" id="pop-rot"   onclick="rotatePage(90)" title="Pivoter 90°"><i class="fa-solid fa-rotate-right"></i>Pivoter</div>
-            <div class="pop-btn dis" id="pop-del"   onclick="deletePage()" title="Supprimer"><i class="fa-solid fa-trash-can"></i>Sup.</div>
+            <div class="pop-btn dis" id="pop-copy"  onclick="copyPage()"    title="Copier la page (1 seule)"><i class="fa-regular fa-copy"></i><span data-i18n="pop.copy">Copier</span></div>
+            <div class="pop-btn dis" id="pop-paste" onclick="pastePage()"   title="Coller après"><i class="fa-solid fa-paste"></i><span data-i18n="pop.paste">Coller</span></div>
+            <div class="pop-btn dis" id="pop-up"    onclick="movePage(-1)"  title="Monter"><i class="fa-solid fa-arrow-up"></i><span data-i18n="pop.up">Monter</span></div>
+            <div class="pop-btn dis" id="pop-dn"    onclick="movePage(1)"   title="Descendre"><i class="fa-solid fa-arrow-down"></i><span data-i18n="pop.down">Descendre</span></div>
+            <div class="pop-btn dis" id="pop-rot"   onclick="rotatePage(90)" title="Pivoter 90°"><i class="fa-solid fa-rotate-right"></i><span data-i18n="pop.rotate">Pivoter</span></div>
+            <div class="pop-btn dis" id="pop-del"   onclick="deletePage()" title="Supprimer"><i class="fa-solid fa-trash-can"></i><span data-i18n="pop.delete">Sup.</span></div>
           </div>
           <span class="pop-sel-info" id="pop-sel-info"></span>
         </div>
         <div id="th-empty" style="text-align:center;padding:36px 8px;color:var(--txt2);font-size:.7rem;font-family:'Cinzel',serif;line-height:2">
           <i class="fa-regular fa-file-pdf" style="font-size:2rem;display:block;margin-bottom:10px;opacity:.2"></i>
-          Ouvrez un PDF<br>pour afficher les vignettes
+          <span data-i18n="lp.empty" id="th-empty-txt">Ouvrez un PDF<br>pour afficher les vignettes</span>
         </div>
         <div id="th-container"></div>
       </div>
@@ -332,9 +413,9 @@
         </g>
         <text x="35" y="39" text-anchor="middle" font-family="'Cinzel Decorative',cursive" font-size="9" fill="#C8962E" font-weight="700">PDF</text>
       </svg>
-      <div class="dz-title">Ouvrir un document PDF</div>
-      <div class="dz-sub">Cliquez ici ou glissez-déposez votre fichier .pdf</div>
-      <div id="dz-btn"><i class="fa-regular fa-folder-open"></i> &nbsp;Parcourir…</div>
+      <div class="dz-title" data-i18n="dz.title">Ouvrir un document PDF</div>
+      <div class="dz-sub" data-i18n="dz.sub">Cliquez ici ou glissez-déposez votre fichier .pdf</div>
+      <div id="dz-btn"><i class="fa-regular fa-folder-open"></i> &nbsp;<span data-i18n="dz.btn">Parcourir…</span></div>
     </div>
 
     <div id="load-bar">
@@ -382,21 +463,21 @@
   <!-- Panneau droit -->
   <aside id="rp">
     <div class="ptabs">
-      <div class="pt act" onclick="rTab('pr',this)">Propriétés</div>
-      <div class="pt" onclick="rTab('ai',this)">IA</div>
-      <div class="pt" onclick="rTab('sec',this)">Sécurité</div>
+      <div class="pt act" onclick="rTab('pr',this)" data-i18n="rp.props">Propriétés</div>
+      <div class="pt" onclick="rTab('ai',this)" data-i18n="rp.ai">IA</div>
+      <div class="pt" onclick="rTab('sec',this)" data-i18n="rp.security">Sécurité</div>
     </div>
     <div class="rpc">
       <div id="r-pr">
         <div class="rps">
-          <div class="rst">Document</div>
-          <div class="pr"><span class="pl">Fichier</span><span class="pv2" id="doc-name">—</span></div>
-          <div class="pr"><span class="pl">Pages</span><span class="pv2" id="doc-pages">—</span></div>
-          <div class="pr"><span class="pl">Taille</span><span class="pv2" id="doc-size">—</span></div>
+          <div class="rst" data-i18n="pr.document">Document</div>
+          <div class="pr"><span class="pl" data-i18n="pr.file">Fichier</span><span class="pv2" id="doc-name">—</span></div>
+          <div class="pr"><span class="pl" data-i18n="pr.pages">Pages</span><span class="pv2" id="doc-pages">—</span></div>
+          <div class="pr"><span class="pl" data-i18n="pr.size">Taille</span><span class="pv2" id="doc-size">—</span></div>
         </div>
         <div class="rps">
-          <div class="rst">Mise en page</div>
-          <label class="lbl">En-tête — droite</label>
+          <div class="rst" data-i18n="pr.layout">Mise en page</div>
+          <label class="lbl" data-i18n="pr.header_r">En-tête — droite</label>
           <input class="pinp" id="rp-hdr-r" placeholder="Texte à droite…"
             onkeydown="if(event.key==='Enter')quickApplyHFRight()"
             ondragover="event.preventDefault()"
@@ -407,7 +488,7 @@
             <span class="rp-var" draggable="true" ondragstart="rpVarDragStart(event,'{date}')"    onclick="rpVarInsert('rp-hdr-r','{date}')">{date}</span>
             <span class="rp-var" draggable="true" ondragstart="rpVarDragStart(event,'{fichier}')" onclick="rpVarInsert('rp-hdr-r','{fichier}')">{fichier}</span>
           </div>
-          <label class="lbl">Pied de page — droite</label>
+          <label class="lbl" data-i18n="pr.footer_r">Pied de page — droite</label>
           <input class="pinp" id="rp-ftr-r" placeholder="Texte à droite…"
             onkeydown="if(event.key==='Enter')quickApplyHFRight()"
             ondragover="event.preventDefault()"
@@ -421,7 +502,7 @@
           <div class="mbtn" style="width:100%;margin-top:8px;text-align:center;box-sizing:border-box;font-size:.75rem" onclick="quickApplyHFRight()"><i class="fa-solid fa-check"></i> Appliquer</div>
         </div>
         <div class="rps">
-          <div class="rst">Palette de couleurs</div>
+          <div class="rst" data-i18n="pr.palette">Palette de couleurs</div>
           <div class="cplt">
             <div class="cs act" style="background:#2D4848" data-color="#2D4848"></div>
             <div class="cs" style="background:#C8962E" data-color="#C8962E"></div>
@@ -440,24 +521,24 @@
           </div>
         </div>
         <div class="rps" id="quality-section" onmouseenter="showQualityTooltip(event)" onmouseleave="hideQualityTooltip()">
-          <div class="rst">Qualité &amp; Conformité <span style="font-size:.58rem;color:var(--gold);opacity:.7">ⓘ</span></div>
+          <div class="rst"><span data-i18n="pr.quality">Qualité &amp; Conformité</span> <span style="font-size:.58rem;color:var(--gold);opacity:.7">ⓘ</span></div>
           <div class="pbar"><div class="pfill" id="quality-bar" style="width:0%"></div></div>
-          <div class="pr"><span class="pl">Score</span><span class="pv2" id="quality-val">—</span></div>
-          <div class="pr"><span class="pl">Standard</span><span class="pv2">PDF/A-2b</span></div>
-          <div class="pr"><span class="pl">Accessibilité</span><span class="pv2">PDF/UA</span></div>
+          <div class="pr"><span class="pl" data-i18n="pr.score">Score</span><span class="pv2" id="quality-val">—</span></div>
+          <div class="pr"><span class="pl" data-i18n="pr.standard">Standard</span><span class="pv2">PDF/A-2b</span></div>
+          <div class="pr"><span class="pl" data-i18n="pr.a11y">Accessibilité</span><span class="pv2">PDF/UA</span></div>
         </div>
       </div>
       <div id="r-ai" style="display:none">
         <div class="rps">
-          <div class="rst">Reconnaissance (OCR)</div>
-          <div class="aibtn" onclick="ocrCurrentPDF()" title="Rendre ce PDF lisible et cherchable (OCR)"><i class="fa-solid fa-eye"></i>Rendre ce PDF lisible (OCR)</div>
-          <div class="aibtn" onclick="importImageOCR()" title="Importer une image et en extraire le texte"><i class="fa-solid fa-image"></i>Importer image → PDF</div>
+          <div class="rst" data-i18n="ai.ocr_section">Reconnaissance (OCR)</div>
+          <div class="aibtn" onclick="ocrCurrentPDF()" title="Rendre ce PDF lisible et cherchable (OCR)"><i class="fa-solid fa-eye"></i><span data-i18n="ai.make_readable">Rendre ce PDF lisible (OCR)</span></div>
+          <div class="aibtn" onclick="importImageOCR()" title="Importer une image et en extraire le texte"><i class="fa-solid fa-image"></i><span data-i18n="ai.import_img">Importer image → PDF</span></div>
         </div>
         <div class="rps">
-          <div class="rst">Génération IA</div>
-          <div class="aibtn" onclick="openSummarizePanel()"><i class="fa-solid fa-wand-magic-sparkles"></i>Résumer</div>
-          <div class="aibtn" onclick="openTranslatePanel()"><i class="fa-solid fa-language"></i>Traduire</div>
-          <div class="aibtn" onclick="activatePDFChat()"><i class="fa-solid fa-message"></i>Discuter avec le PDF</div>
+          <div class="rst" data-i18n="ai.generation">Génération IA</div>
+          <div class="aibtn" onclick="openSummarizePanel()"><i class="fa-solid fa-wand-magic-sparkles"></i><span data-i18n="ai.summarize">Résumer</span></div>
+          <div class="aibtn" onclick="openTranslatePanel()"><i class="fa-solid fa-language"></i><span data-i18n="ai.translate">Traduire</span></div>
+          <div class="aibtn" onclick="activatePDFChat()"><i class="fa-solid fa-message"></i><span data-i18n="ai.chat">Discuter avec le PDF</span></div>
         </div>
         <div class="rps">
           <div class="rst">Chat</div>
@@ -521,6 +602,7 @@
     <div class="stb-btn" onclick="selCopy()"          title="Copier la zone comme image"><i class="fa-regular fa-copy"></i></div>
     <div class="stb-btn" onclick="selPaste()"         title="Coller dans cette zone"    id="btn-sel-paste"><i class="fa-solid fa-paste"></i></div>
     <div class="stb-sep"></div>
+    <div class="stb-btn" onclick="selCrop()"          title="Recadrer — conserver uniquement cette zone"><i class="fa-solid fa-crop-simple"></i></div>
     <div class="stb-btn" onclick="selRedact()"        title="Masquer / biffure (fond blanc)"><i class="fa-solid fa-eraser"></i></div>
     <div class="stb-btn" onclick="selToBox()"         title="Convertir en boîte colorée"><i class="fa-regular fa-square"></i></div>
     <div class="stb-sep"></div>
@@ -1786,6 +1868,12 @@
               oninput="document.getElementById('rmwm-gmax-v').textContent=this.value"
               style="flex:1">
             <span id="rmwm-gmax-v" style="font-size:.75rem;color:var(--gold);min-width:30px">220</span>
+          </div>
+          <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:8px;margin-top:2px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.78rem">
+              <input type="checkbox" id="rmwm-smartfill">
+              <span>Remplissage intelligent <span style="color:var(--txt2);font-size:.72rem">(fond coloré — utilise la couleur locale autour du filigrane)</span></span>
+            </label>
           </div>
         </div>
       </div>

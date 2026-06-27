@@ -13,6 +13,465 @@
  *     Annulation des renders en cours via renderGen.
  */
 
+// ══ Internationalisation (i18n) ═══════════════════════════════════════════════
+let _lang = 'fr';
+
+const LANG = {
+  fr: {
+    // ── Menu Fichier ──────────────────────────────────────────────────────────
+    'menu.file'            : 'Fichier',
+    'menu.new'             : 'Nouveau',
+    'menu.open'            : 'Ouvrir un PDF…',
+    'menu.import_ocr'      : 'Importer image → PDF (OCR)',
+    'menu.save'            : 'Enregistrer',
+    'menu.save_as'         : 'Enregistrer sous…',
+    'menu.export'          : 'Exporter vers…',
+    'menu.batch'           : 'Traitement par lots',
+    'menu.repair'          : 'Réparer un PDF corrompu',
+    'menu.print'           : 'Imprimer…',
+    'menu.quit'            : 'Quitter',
+    // ── Menu Édition ─────────────────────────────────────────────────────────
+    'menu.edit'            : 'Édition',
+    'menu.undo'            : 'Annuler',
+    'menu.redo'            : 'Rétablir',
+    'menu.cut'             : 'Couper',
+    'menu.copy'            : 'Copier',
+    'menu.paste'           : 'Coller',
+    'menu.paste_ext'       : 'Collage externe',
+    'menu.find'            : 'Rechercher & Remplacer',
+    'menu.redact'          : 'Biffure définitive',
+    // ── Menu Pages ───────────────────────────────────────────────────────────
+    'menu.pages'           : 'Pages',
+    'menu.merge'           : 'Fusionner des PDFs',
+    'menu.pagesize'        : 'Taille de la page',
+    'menu.rotate'          : 'Pivoter',
+    'menu.bookmarks'       : 'Gérer les signets',
+    'menu.toc'             : 'Table des matières',
+    'menu.bates'           : 'Numérotation Bates',
+    'menu.header_footer'   : 'En-têtes & Pieds de page',
+    'menu.watermark'       : 'Filigranes & Tampons',
+    'menu.remove_wm'       : 'Supprimer les filigranes',
+    // ── Menu IA ──────────────────────────────────────────────────────────────
+    'menu.ia'              : 'IA',
+    'menu.summarize_doc'   : 'Résumer le document',
+    'menu.translate_doc'   : 'Traduire (40+ langues)',
+    'menu.chat_pdf'        : 'Discuter avec le PDF',
+    'menu.ocr_rec'         : 'Reconnaître (OCR)',
+    'menu.extract_tables'  : 'Extraire tableaux',
+    // ── Menu Outils ──────────────────────────────────────────────────────────
+    'menu.tools'           : 'Outils',
+    'menu.compress'        : 'Compresser',
+    'menu.enhance_ia'      : 'Amélioration IA',
+    'menu.layers'          : 'Calques',
+    'menu.media'           : 'Vidéo / Audio / 3D',
+    'menu.measure'         : 'Mesures & Cotation',
+    'menu.color_mgmt'      : 'Gestion couleurs (ICC)',
+    'menu.preflight'       : 'Préflighting',
+    'menu.accessibility'   : 'Accessibilité',
+    'menu.pdf_std'         : 'PDF/A · X · E · UA',
+    'menu.highlight'       : 'Surligner',
+    'menu.note'            : 'Ajouter une note',
+    'menu.draw'            : 'Dessiner',
+    'menu.shapes'          : 'Formes & Flèches',
+    'menu.compare'         : 'Comparer deux versions',
+    'menu.history'         : 'Historique des modifications',
+    // ── Menu Sécurité ────────────────────────────────────────────────────────
+    'menu.security'        : 'Sécurité',
+    'menu.encrypt'         : 'Chiffrer',
+    'menu.password'        : 'Mot de passe',
+    'menu.restrict'        : 'Restreindre les droits',
+    'menu.redact_perm'     : 'Biffure permanente',
+    'menu.metadata'        : 'Métadonnées',
+    'menu.sign'            : 'Signature électronique',
+    // ── Menu Affichage ───────────────────────────────────────────────────────
+    'menu.view'            : 'Affichage',
+    'menu.zoom_in'         : 'Zoom avant',
+    'menu.zoom_out'        : 'Zoom arrière',
+    'menu.fit_page'        : 'Adapter à la page',
+    'menu.theme_dark'      : 'Thème sombre',
+    'menu.theme_light'     : 'Thème clair',
+    'menu.fullscreen'      : 'Plein écran',
+    'menu.double_page'     : 'Page double',
+    // ── Menu Aide ────────────────────────────────────────────────────────────
+    'menu.help'            : 'Aide',
+    'menu.settings'        : 'Paramètres',
+    'menu.about'           : 'À propos',
+    // ── Groupes toolbar ──────────────────────────────────────────────────────
+    'tgl.file'             : 'Fichier',
+    'tgl.edit'             : 'Édition',
+    'tgl.review'           : 'Révision',
+    'tgl.pages'            : 'Pages',
+    'tgl.advanced'         : 'Avancé',
+    'tgl.security'         : 'Sécurité',
+    // ── Panneaux gauche / droit ───────────────────────────────────────────────
+    'lp.views'             : 'Vues',
+    'lp.bookmarks'         : 'Signets',
+    'lp.fields'            : 'Champs',
+    'lp.empty'             : 'Ouvrez un PDF\npour afficher les vignettes',
+    'rp.props'             : 'Propriétés',
+    'rp.ai'                : 'IA',
+    'rp.security'          : 'Sécurité',
+    // ── Zone de dépôt ────────────────────────────────────────────────────────
+    'dz.title'             : 'Ouvrir un document PDF',
+    'dz.sub'               : 'Cliquez ici ou glissez-déposez votre fichier .pdf',
+    'dz.btn'               : 'Parcourir…',
+    // ── Panneau droit — Propriétés ────────────────────────────────────────────
+    'pr.document'          : 'Document',
+    'pr.file'              : 'Fichier',
+    'pr.pages'             : 'Pages',
+    'pr.size'              : 'Taille',
+    'pr.layout'            : 'Mise en page',
+    'pr.header_r'          : 'En-tête — droite',
+    'pr.footer_r'          : 'Pied de page — droite',
+    'pr.palette'           : 'Palette de couleurs',
+    'pr.quality'           : 'Qualité & Conformité',
+    'pr.score'             : 'Score',
+    'pr.standard'          : 'Standard',
+    'pr.a11y'              : 'Accessibilité',
+    // ── Panneau droit — IA ───────────────────────────────────────────────────
+    'ai.ocr_section'       : 'Reconnaissance (OCR)',
+    'ai.make_readable'     : 'Rendre ce PDF lisible (OCR)',
+    'ai.import_img'        : 'Importer image → PDF',
+    'ai.generation'        : 'Génération IA',
+    'ai.summarize'         : 'Résumer',
+    'ai.translate'         : 'Traduire',
+    'ai.chat'              : 'Discuter avec le PDF',
+    // ── Barre opérations pages ────────────────────────────────────────────────
+    'pop.copy'             : 'Copier',
+    'pop.paste'            : 'Coller',
+    'pop.up'               : 'Monter',
+    'pop.down'             : 'Descendre',
+    'pop.rotate'           : 'Pivoter',
+    'pop.delete'           : 'Sup.',
+    // ── Toolbar tooltips ─────────────────────────────────────────────────────
+    'tip.undo'             : 'Annuler la dernière action (⌘Z)',
+    'tip.redo'             : 'Rétablir (⇧⌘Z)',
+    'tip.open'             : 'Ouvrir un PDF',
+    'tip.save'             : 'Enregistrer (⌘S)',
+    'tip.merge'            : 'Fusionner plusieurs PDFs en un seul',
+    'tip.zoom_in'          : 'Zoom avant',
+    'tip.zoom_out'         : 'Zoom arrière',
+    'tip.fit'              : 'Ajuster à la fenêtre',
+    'tip.rotate'           : 'Pivoter la page de 90°',
+    'tip.read'             : 'Lecture',
+    'tip.select'           : 'Sélection (zone rectangulaire)',
+    'tip.text'             : 'Texte — ajouter ou modifier du texte',
+    'tip.highlight'        : 'Surligner du texte',
+    'tip.note'             : 'Ajouter une note',
+    'tip.redact'           : 'Biffure — masquer définitivement du contenu',
+    'tip.draw'             : 'Stylo — dessin libre',
+    'tip.shapes'           : 'Formes & Flèches',
+    'tip.measure'          : 'Mesures',
+    'tip.eyedropper'       : 'Pipette — prélever une couleur',
+    'tip.ocr'              : 'OCR — reconnaître le texte d\'une image',
+    'tip.sign'             : 'Signature électronique',
+    'tip.print'            : 'Imprimer (⌘P)',
+    'tip.settings'         : 'Paramètres',
+    'tip.help'             : 'Aide & raccourcis clavier',
+    'tip.new'              : 'Nouveau document (⌘N)',
+    'tip.image'            : 'Insérer ou déplacer une image',
+    'tip.compress'         : 'Compresser le fichier (–20% à –80%)',
+    'tip.compare'          : 'Comparer deux versions du document',
+    'tip.summarize'        : 'Résumé IA — analyse intelligente du document',
+    'tip.batch'            : 'Traitement par lots — action sur plusieurs fichiers',
+    'tip.encrypt'          : 'Chiffrer et protéger par mot de passe (AES-256)',
+    // ── Boutons communs ───────────────────────────────────────────────────────
+    'btn.cancel'           : 'Annuler',
+    'btn.apply'            : 'Appliquer',
+    'btn.save'             : 'Enregistrer',
+    'btn.close'            : 'Fermer',
+    'btn.ok'               : 'OK',
+    // ── Paramètres ───────────────────────────────────────────────────────────
+    'settings.title'       : 'Paramètres',
+    'settings.lang'        : 'Langue',
+    'settings.lang_fr'     : 'Français',
+    'settings.lang_en'     : 'English',
+    'settings.ocr_engine'  : 'Moteur OCR',
+    'settings.ocr_local'   : 'Local — hors ligne — sans configuration',
+    'settings.ocr_ai'      : 'IA — haute précision — nécessite une clé API',
+    'settings.gv_key'      : 'Clé API Google Cloud Vision',
+    'settings.openai_key'  : 'Clé API OpenAI (ChatGPT)',
+    'settings.openai_used' : 'Utilisée pour : Traduction IA · Résumé · Chat avec le PDF',
+    'settings.saved'       : 'Paramètres enregistrés',
+    // ── Taille de la page ─────────────────────────────────────────────────────
+    'pgsize.title'         : 'Taille de la page',
+    'pgsize.page'          : 'Page',
+    'pgsize.unit'          : 'Unité',
+    'pgsize.width'         : 'Largeur',
+    'pgsize.height'        : 'Hauteur',
+    'pgsize.presets'       : 'Formats rapides :',
+    'pgsize.scope'         : 'Appliquer à',
+    'pgsize.current'       : 'Page courante seulement',
+    'pgsize.all'           : 'Toutes les pages',
+    'pgsize.lock_tip'      : 'Verrouiller les proportions',
+    // ── Panneau pages (pop-up vignettes) ─────────────────────────────────────
+    'pages.insert_before'  : 'Insérer avant',
+    'pages.insert_after'   : 'Insérer après',
+    'pages.delete'         : 'Supprimer',
+    'pages.rotate'         : 'Pivoter',
+    'pages.paste'          : 'Coller après',
+    // ── Divers ───────────────────────────────────────────────────────────────
+    'drop.hint'            : 'Glissez un PDF ici ou cliquez pour ouvrir',
+    'no_pdf'               : 'Aucun PDF ouvert',
+    'page_of'              : 'sur',
+  },
+  en: {
+    // ── Menu Fichier ──────────────────────────────────────────────────────────
+    'menu.file'            : 'File',
+    'menu.new'             : 'New',
+    'menu.open'            : 'Open PDF…',
+    'menu.import_ocr'      : 'Import image → PDF (OCR)',
+    'menu.save'            : 'Save',
+    'menu.save_as'         : 'Save as…',
+    'menu.export'          : 'Export to…',
+    'menu.batch'           : 'Batch processing',
+    'menu.repair'          : 'Repair a corrupted PDF',
+    'menu.print'           : 'Print…',
+    'menu.quit'            : 'Quit',
+    // ── Menu Édition ─────────────────────────────────────────────────────────
+    'menu.edit'            : 'Edit',
+    'menu.undo'            : 'Undo',
+    'menu.redo'            : 'Redo',
+    'menu.cut'             : 'Cut',
+    'menu.copy'            : 'Copy',
+    'menu.paste'           : 'Paste',
+    'menu.paste_ext'       : 'Paste external',
+    'menu.find'            : 'Find & Replace',
+    'menu.redact'          : 'Permanent redaction',
+    // ── Menu Pages ───────────────────────────────────────────────────────────
+    'menu.pages'           : 'Pages',
+    'menu.merge'           : 'Merge PDFs',
+    'menu.pagesize'        : 'Page size',
+    'menu.rotate'          : 'Rotate',
+    'menu.bookmarks'       : 'Manage bookmarks',
+    'menu.toc'             : 'Table of contents',
+    'menu.bates'           : 'Bates numbering',
+    'menu.header_footer'   : 'Headers & Footers',
+    'menu.watermark'       : 'Watermarks & Stamps',
+    'menu.remove_wm'       : 'Remove watermarks',
+    // ── Menu IA ──────────────────────────────────────────────────────────────
+    'menu.ia'              : 'AI',
+    'menu.summarize_doc'   : 'Summarise document',
+    'menu.translate_doc'   : 'Translate (40+ languages)',
+    'menu.chat_pdf'        : 'Chat with PDF',
+    'menu.ocr_rec'         : 'Recognise (OCR)',
+    'menu.extract_tables'  : 'Extract tables',
+    // ── Menu Outils ──────────────────────────────────────────────────────────
+    'menu.tools'           : 'Tools',
+    'menu.compress'        : 'Compress',
+    'menu.enhance_ia'      : 'AI Enhancement',
+    'menu.layers'          : 'Layers',
+    'menu.media'           : 'Video / Audio / 3D',
+    'menu.measure'         : 'Measurements & Dimensions',
+    'menu.color_mgmt'      : 'Colour management (ICC)',
+    'menu.preflight'       : 'Preflighting',
+    'menu.accessibility'   : 'Accessibility',
+    'menu.pdf_std'         : 'PDF/A · X · E · UA',
+    'menu.highlight'       : 'Highlight',
+    'menu.note'            : 'Add a note',
+    'menu.draw'            : 'Draw',
+    'menu.shapes'          : 'Shapes & Arrows',
+    'menu.compare'         : 'Compare two versions',
+    'menu.history'         : 'Change history',
+    // ── Menu Sécurité ────────────────────────────────────────────────────────
+    'menu.security'        : 'Security',
+    'menu.encrypt'         : 'Encrypt',
+    'menu.password'        : 'Password',
+    'menu.restrict'        : 'Restrict permissions',
+    'menu.redact_perm'     : 'Permanent redaction',
+    'menu.metadata'        : 'Metadata',
+    'menu.sign'            : 'Electronic signature',
+    // ── Menu Affichage ───────────────────────────────────────────────────────
+    'menu.view'            : 'View',
+    'menu.zoom_in'         : 'Zoom in',
+    'menu.zoom_out'        : 'Zoom out',
+    'menu.fit_page'        : 'Fit to page',
+    'menu.theme_dark'      : 'Dark theme',
+    'menu.theme_light'     : 'Light theme',
+    'menu.fullscreen'      : 'Full screen',
+    'menu.double_page'     : 'Double page',
+    // ── Menu Aide ────────────────────────────────────────────────────────────
+    'menu.help'            : 'Help',
+    'menu.settings'        : 'Settings',
+    'menu.about'           : 'About',
+    // ── Groupes toolbar ──────────────────────────────────────────────────────
+    'tgl.file'             : 'File',
+    'tgl.edit'             : 'Edit',
+    'tgl.review'           : 'Review',
+    'tgl.pages'            : 'Pages',
+    'tgl.advanced'         : 'Advanced',
+    'tgl.security'         : 'Security',
+    // ── Panneaux gauche / droit ───────────────────────────────────────────────
+    'lp.views'             : 'Views',
+    'lp.bookmarks'         : 'Bookmarks',
+    'lp.fields'            : 'Fields',
+    'lp.empty'             : 'Open a PDF\nto display thumbnails',
+    'rp.props'             : 'Properties',
+    'rp.ai'                : 'AI',
+    'rp.security'          : 'Security',
+    // ── Drop zone ────────────────────────────────────────────────────────────
+    'dz.title'             : 'Open a PDF document',
+    'dz.sub'               : 'Click here or drag and drop your .pdf file',
+    'dz.btn'               : 'Browse…',
+    // ── Right panel — Properties ──────────────────────────────────────────────
+    'pr.document'          : 'Document',
+    'pr.file'              : 'File',
+    'pr.pages'             : 'Pages',
+    'pr.size'              : 'Size',
+    'pr.layout'            : 'Page layout',
+    'pr.header_r'          : 'Header — right',
+    'pr.footer_r'          : 'Footer — right',
+    'pr.palette'           : 'Colour palette',
+    'pr.quality'           : 'Quality & Compliance',
+    'pr.score'             : 'Score',
+    'pr.standard'          : 'Standard',
+    'pr.a11y'              : 'Accessibility',
+    // ── Right panel — AI ─────────────────────────────────────────────────────
+    'ai.ocr_section'       : 'Recognition (OCR)',
+    'ai.make_readable'     : 'Make this PDF readable (OCR)',
+    'ai.import_img'        : 'Import image → PDF',
+    'ai.generation'        : 'AI Generation',
+    'ai.summarize'         : 'Summarise',
+    'ai.translate'         : 'Translate',
+    'ai.chat'              : 'Chat with PDF',
+    // ── Page operations bar ───────────────────────────────────────────────────
+    'pop.copy'             : 'Copy',
+    'pop.paste'            : 'Paste',
+    'pop.up'               : 'Up',
+    'pop.down'             : 'Down',
+    'pop.rotate'           : 'Rotate',
+    'pop.delete'           : 'Del.',
+    // ── Toolbar tooltips ─────────────────────────────────────────────────────
+    'tip.undo'             : 'Undo last action (⌘Z)',
+    'tip.redo'             : 'Redo (⇧⌘Z)',
+    'tip.open'             : 'Open a PDF',
+    'tip.save'             : 'Save (⌘S)',
+    'tip.merge'            : 'Merge multiple PDFs into one',
+    'tip.zoom_in'          : 'Zoom in',
+    'tip.zoom_out'         : 'Zoom out',
+    'tip.fit'              : 'Fit to window',
+    'tip.rotate'           : 'Rotate page 90°',
+    'tip.read'             : 'Read',
+    'tip.select'           : 'Selection (rectangular area)',
+    'tip.text'             : 'Text — add or edit text',
+    'tip.highlight'        : 'Highlight text',
+    'tip.note'             : 'Add a note',
+    'tip.redact'           : 'Redact — permanently hide content',
+    'tip.draw'             : 'Pen — freehand drawing',
+    'tip.shapes'           : 'Shapes & Arrows',
+    'tip.measure'          : 'Measure',
+    'tip.eyedropper'       : 'Eyedropper — pick a color',
+    'tip.ocr'              : 'OCR — recognise text in an image',
+    'tip.sign'             : 'Electronic signature',
+    'tip.print'            : 'Print (⌘P)',
+    'tip.settings'         : 'Settings',
+    'tip.help'             : 'Help & keyboard shortcuts',
+    'tip.new'              : 'New document (⌘N)',
+    'tip.image'            : 'Insert or move an image',
+    'tip.compress'         : 'Compress file (–20% to –80%)',
+    'tip.compare'          : 'Compare two versions of the document',
+    'tip.summarize'        : 'AI Summary — intelligent document analysis',
+    'tip.batch'            : 'Batch processing — action on multiple files',
+    'tip.encrypt'          : 'Encrypt and password-protect (AES-256)',
+    // ── Boutons communs ───────────────────────────────────────────────────────
+    'btn.cancel'           : 'Cancel',
+    'btn.apply'            : 'Apply',
+    'btn.save'             : 'Save',
+    'btn.close'            : 'Close',
+    'btn.ok'               : 'OK',
+    // ── Paramètres ───────────────────────────────────────────────────────────
+    'settings.title'       : 'Settings',
+    'settings.lang'        : 'Language',
+    'settings.lang_fr'     : 'Français',
+    'settings.lang_en'     : 'English',
+    'settings.ocr_engine'  : 'OCR engine',
+    'settings.ocr_local'   : 'Local — offline — no configuration needed',
+    'settings.ocr_ai'      : 'AI — high accuracy — requires an API key',
+    'settings.gv_key'      : 'Google Cloud Vision API key',
+    'settings.openai_key'  : 'OpenAI API key (ChatGPT)',
+    'settings.openai_used' : 'Used for: AI Translation · Summary · Chat with PDF',
+    'settings.saved'       : 'Settings saved',
+    // ── Taille de la page ─────────────────────────────────────────────────────
+    'pgsize.title'         : 'Page size',
+    'pgsize.page'          : 'Page',
+    'pgsize.unit'          : 'Unit',
+    'pgsize.width'         : 'Width',
+    'pgsize.height'        : 'Height',
+    'pgsize.presets'       : 'Quick formats:',
+    'pgsize.scope'         : 'Apply to',
+    'pgsize.current'       : 'Current page only',
+    'pgsize.all'           : 'All pages',
+    'pgsize.lock_tip'      : 'Lock proportions',
+    // ── Panneau pages (pop-up vignettes) ─────────────────────────────────────
+    'pages.insert_before'  : 'Insert before',
+    'pages.insert_after'   : 'Insert after',
+    'pages.delete'         : 'Delete',
+    'pages.rotate'         : 'Rotate',
+    'pages.paste'          : 'Paste after',
+    // ── Divers ───────────────────────────────────────────────────────────────
+    'drop.hint'            : 'Drop a PDF here or click to open',
+    'no_pdf'               : 'No PDF open',
+    'page_of'              : 'of',
+  }
+};
+
+/** Retourne la chaîne traduite pour la langue courante */
+function _s(key) {
+  return (LANG[_lang] && LANG[_lang][key]) || (LANG.fr[key]) || key;
+}
+
+/** Applique les traductions à tous les éléments data-i18n / data-i18n-tip */
+function applyLang(lang) {
+  if (lang) _lang = lang;
+
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    const val = _s(key);
+    // Cas spécial : éléments avec <br> hardcodé → innerHTML
+    if (el.id === 'th-empty-txt') {
+      el.innerHTML = val.replace('\n', '<br>');
+      return;
+    }
+    const hasChildElements = el.children.length > 0;
+
+    if (!hasChildElements) {
+      // Élément feuille (span, label, div sans enfants) → textContent direct
+      el.textContent = val;
+    } else {
+      // Élément mixte (icône + texte, menu + dropdown…)
+      // Remplacer le PREMIER nœud texte non-vide directement
+      for (const node of el.childNodes) {
+        if (node.nodeType === 3 /* TEXT_NODE */ && node.nodeValue.trim()) {
+          node.nodeValue = val + ' ';
+          break;
+        }
+      }
+    }
+  });
+
+  document.querySelectorAll('[data-i18n-tip]').forEach(el => {
+    el.setAttribute('data-tip', _s(el.getAttribute('data-i18n-tip')));
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.setAttribute('placeholder', _s(el.getAttribute('data-i18n-placeholder')));
+  });
+
+  // Panel "Taille de la page" — options dynamiques
+  const pgOpt1 = document.querySelector('#pgsize-scope option[value="current"]');
+  if (pgOpt1) pgOpt1.textContent = _s('pgsize.current');
+  const pgOpt2 = document.querySelector('#pgsize-scope option[value="all"]');
+  if (pgOpt2) pgOpt2.textContent = _s('pgsize.all');
+  document.getElementById('pgsize-lock-btn')?.setAttribute('title', _s('pgsize.lock_tip'));
+}
+
+async function loadLang() {
+  try {
+    const s = window.electronAPI ? await window.electronAPI.getSettings() : {};
+    _lang = (s && s.lang) || 'fr';
+  } catch { _lang = 'fr'; }
+  applyLang();
+}
+
 // ─── Config PDF.js ─────────────────────────────────────────────────────────────
 if (typeof pdfjsLib !== 'undefined') {
   pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -54,7 +513,14 @@ let selStart       = null;
 let selRect        = null;
 let selDims        = null;
 let currentSel     = null;
-let selClipboard   = null;
+let selClipboard      = null;
+let selClipboardPdfW  = 0;   // dimensions PDF au moment du selCopy
+let selClipboardPdfH  = 0;
+let selClipboardPxW   = 0;   // dimensions écran au moment du selCopy
+let selClipboardPxH   = 0;
+let selClipboardLx    = 40;  // position dans le wrap au moment du selCopy
+let selClipboardLy    = 40;
+let selClipboardWrap  = null; // wrap d'origine
 let eyedropperActive = false;
 let lastOcrText    = '';
 
@@ -1256,6 +1722,186 @@ async function rotatePage(deg) {
   } catch(err) { t('Erreur rotation : ' + err.message); }
 }
 
+// ══ Taille de la page ═════════════════════════════════════════════════════════
+let _pgSizeUnit      = 'px';   // 'px' ou 'cm'
+let _pgSizeLocked    = true;   // aspect ratio verrouillé
+let _pgSizeOrigW     = 0;      // dimensions originales en points (pdf-lib units)
+let _pgSizeOrigH     = 0;
+let _pgSizeAspect    = 1;      // W/H
+
+const _PT_PER_CM = 28.3465;   // 1 cm = 28.3465 pt
+
+function _ptToDisplay(pt) {
+  return _pgSizeUnit === 'cm'
+    ? parseFloat((pt / _PT_PER_CM).toFixed(3))
+    : Math.round(pt);          // px = pt arrondi (72 dpi)
+}
+function _displayToPt(val) {
+  return _pgSizeUnit === 'cm' ? val * _PT_PER_CM : val;
+}
+
+async function openPageSizePanel() {
+  if (!currentPdfData) { t('Ouvrez d\'abord un PDF.'); return; }
+  const { PDFDocument } = PDFLib;
+  const doc   = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
+  const pages = doc.getPages();
+  const np    = pages.length;
+
+  // Remplir le sélecteur de pages
+  const sel = document.getElementById('pgsize-page');
+  sel.innerHTML = '';
+  const curPage = parseInt(document.getElementById('cur-page')?.textContent || '1') || 1;
+  for (let i = 1; i <= np; i++) {
+    const opt = document.createElement('option');
+    opt.value = i; opt.textContent = 'Page ' + i;
+    if (i === curPage) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  document.getElementById('pgsize-total').textContent = '/ ' + np;
+
+  // Charger les dimensions de la page sélectionnée
+  pgSizeLoadPage();
+  document.getElementById('pgsize-overlay').style.display = 'flex';
+}
+
+function pgSizeLoadPage() {
+  if (!currentPdfData) return;
+  PDFLib.PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true }).then(doc => {
+    const idx  = parseInt(document.getElementById('pgsize-page').value) - 1;
+    const page = doc.getPages()[idx];
+    if (!page) return;
+    const { width, height } = page.getSize();
+    _pgSizeOrigW  = width;
+    _pgSizeOrigH  = height;
+    _pgSizeAspect = width / Math.max(1, height);
+    _pgSizeRefreshInputs();
+  });
+}
+
+function _pgSizeRefreshInputs() {
+  document.getElementById('pgsize-w').value = _ptToDisplay(_pgSizeOrigW);
+  document.getElementById('pgsize-h').value = _ptToDisplay(_pgSizeOrigH);
+  const tag = _pgSizeUnit === 'cm' ? 'cm' : 'px';
+  document.getElementById('pgsize-utag-w').textContent = tag;
+  document.getElementById('pgsize-utag-h').textContent = tag;
+  const note = _pgSizeUnit === 'cm'
+    ? '1 cm = 28.35 pt'
+    : '1 px = 1 pt (72 dpi)';
+  document.getElementById('pgsize-unit-note').textContent = note;
+}
+
+function pgSizeSetUnit(u) {
+  _pgSizeUnit = u;
+  document.getElementById('pgsize-px-btn').classList.toggle('act', u === 'px');
+  document.getElementById('pgsize-cm-btn').classList.toggle('act', u === 'cm');
+  // Lire les valeurs actuelles dans les inputs, convertir dans la nouvelle unité
+  const wIn = parseFloat(document.getElementById('pgsize-w').value) || 0;
+  const hIn = parseFloat(document.getElementById('pgsize-h').value) || 0;
+  // Les inputs étaient dans l'ancienne unité → convertir en pt puis dans la nouvelle
+  const oldUnit = u === 'cm' ? 'px' : 'cm';
+  const ptW = oldUnit === 'cm' ? wIn * _PT_PER_CM : wIn;
+  const ptH = oldUnit === 'cm' ? hIn * _PT_PER_CM : hIn;
+  _pgSizeOrigW = ptW;
+  _pgSizeOrigH = ptH;
+  _pgSizeRefreshInputs();
+}
+
+function pgSizeToggleLock() {
+  _pgSizeLocked = !_pgSizeLocked;
+  const btn = document.getElementById('pgsize-lock-btn');
+  const ico = document.getElementById('pgsize-lock-ico');
+  btn.classList.toggle('act', _pgSizeLocked);
+  ico.className = _pgSizeLocked ? 'fa-solid fa-lock' : 'fa-solid fa-lock-open';
+  if (_pgSizeLocked) {
+    // Recalculer le ratio depuis les valeurs actuelles
+    const wIn = parseFloat(document.getElementById('pgsize-w').value) || 1;
+    const hIn = parseFloat(document.getElementById('pgsize-h').value) || 1;
+    _pgSizeAspect = wIn / hIn;
+  }
+}
+
+function pgSizeWChanged() {
+  if (!_pgSizeLocked) return;
+  const wIn = parseFloat(document.getElementById('pgsize-w').value) || 0;
+  const hVal = _pgSizeUnit === 'cm'
+    ? parseFloat((wIn / _pgSizeAspect).toFixed(3))
+    : Math.round(wIn / _pgSizeAspect);
+  document.getElementById('pgsize-h').value = hVal;
+}
+
+function pgSizeHChanged() {
+  if (!_pgSizeLocked) return;
+  const hIn = parseFloat(document.getElementById('pgsize-h').value) || 0;
+  const wVal = _pgSizeUnit === 'cm'
+    ? parseFloat((hIn * _pgSizeAspect).toFixed(3))
+    : Math.round(hIn * _pgSizeAspect);
+  document.getElementById('pgsize-w').value = wVal;
+}
+
+function pgSizePreset(wPt, hPt) {
+  _pgSizeOrigW  = wPt;
+  _pgSizeOrigH  = hPt;
+  _pgSizeAspect = wPt / hPt;
+  _pgSizeRefreshInputs();
+}
+
+function closePageSizePanel() {
+  document.getElementById('pgsize-overlay').style.display = 'none';
+}
+
+async function applyPageSize() {
+  if (!currentPdfData) return;
+  const wIn  = parseFloat(document.getElementById('pgsize-w').value);
+  const hIn  = parseFloat(document.getElementById('pgsize-h').value);
+  const newW = _displayToPt(wIn);
+  const newH = _displayToPt(hIn);
+  if (!newW || !newH || newW < 1 || newH < 1) { t('Dimensions invalides.'); return; }
+
+  const scope  = document.getElementById('pgsize-scope').value;
+  const pageNo = parseInt(document.getElementById('pgsize-page').value);
+
+  try {
+    const { PDFDocument } = PDFLib;
+    const srcBytes = base64ToBytes(currentPdfData);
+
+    // On reconstruit un nouveau doc page par page pour pouvoir embarquer et mettre à l'échelle
+    const srcDoc  = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
+    const newDoc  = await PDFDocument.create();
+    const srcPages = srcDoc.getPages();
+    const np       = srcPages.length;
+
+    const targets = new Set(
+      scope === 'all' ? srcPages.map((_, i) => i) : [pageNo - 1]
+    );
+
+    for (let i = 0; i < np; i++) {
+      if (targets.has(i)) {
+        // Embarquer la page source comme Form XObject
+        const [emb] = await newDoc.embedPdf(srcBytes, [i]);
+        const { width: origW, height: origH } = srcPages[i].getSize();
+
+        // Créer une nouvelle page aux nouvelles dimensions
+        const newPage = newDoc.addPage([newW, newH]);
+
+        // Dessiner la page source mise à l'échelle pour remplir exactement newW×newH
+        newPage.drawPage(emb, { x: 0, y: 0, width: newW, height: newH });
+      } else {
+        // Copier la page telle quelle
+        const [copied] = await newDoc.copyPages(srcDoc, [i]);
+        newDoc.addPage(copied);
+      }
+    }
+
+    const data = bytesToBase64(await newDoc.save({ useObjectStreams: false }));
+    closePageSizePanel();
+    await renderPDFFromData({ name: currentPdfName, size: Math.round(data.length * .75), data, filePath: currentFilePath }, true);
+    const wDisp = _ptToDisplay(newW);
+    const hDisp = _ptToDisplay(newH);
+    const u = _pgSizeUnit;
+    t((scope === 'all' ? 'Toutes les pages' : 'Page ' + pageNo) + ' redimensionnée : ' + wDisp + u + ' × ' + hDisp + u);
+  } catch(err) { t('Erreur : ' + err.message); }
+}
+
 async function renderThumbnails(pdf) {
   const np          = pdf.numPages;
   const thContainer = document.getElementById('th-container');
@@ -1593,8 +2239,19 @@ async function openOcrSettings() {
   const apiKey   = settings.googleVisionKey || '';
 
   let body = `
+<div style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid rgba(200,150,46,.2)">
+  <div style="font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.12em;color:var(--gold);margin-bottom:10px;text-transform:uppercase">${_s('settings.lang')}</div>
+  <div style="display:flex;gap:10px">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.88rem">
+      <input type="radio" name="app-lang" id="lang-fr" value="fr" onchange="applyLang('fr')"> <strong>Français</strong>
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.88rem">
+      <input type="radio" name="app-lang" id="lang-en" value="en" onchange="applyLang('en')"> <strong>English</strong>
+    </label>
+  </div>
+</div>
 <div style="margin-bottom:18px">
-  <div style="font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.12em;color:var(--gold);margin-bottom:10px;text-transform:uppercase">Moteur OCR</div>
+  <div style="font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.12em;color:var(--gold);margin-bottom:10px;text-transform:uppercase">${_s('settings.ocr_engine')}</div>
   <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:10px;font-size:.88rem">
     <input type="radio" name="ocr-engine" id="ocr-tesseract" value="tesseract" onchange="toggleOcrEngine()">
     <div><strong>Tesseract</strong><div style="font-size:.78rem;opacity:.65;margin-top:2px">Local — hors ligne — sans configuration</div></div>
@@ -1637,7 +2294,7 @@ async function openOcrSettings() {
   </div>
 </div>`;
 
-  openModal("Parametres", body);
+  openModal(_s('settings.title'), body);
 
   // Appliquer les valeurs sauvegardees
   const radio = document.getElementById('ocr-' + engine);
@@ -1646,6 +2303,9 @@ async function openOcrSettings() {
   if (oaKeyInput) oaKeyInput.value = openaiKey;
   const keyInput = document.getElementById('gv-api-key');
   if (keyInput) keyInput.value = apiKey;
+  // Pré-sélectionner la langue courante
+  const langRadio = document.getElementById('lang-' + _lang);
+  if (langRadio) langRadio.checked = true;
 
   // Afficher/masquer la section selon l'engine selectionne
   toggleOcrEngine();
@@ -1671,9 +2331,13 @@ async function saveOcrSettings() {
   const engine = radio ? radio.value : 'tesseract';
   const apiKey = (document.getElementById('gv-api-key') || {}).value || '';
   const openaiKey = (document.getElementById('openai-api-key') || {}).value || '';
-  await window.electronAPI.saveSettings({ ocrEngine: engine, googleVisionKey: apiKey, openaiKey });
+  const langRadio = document.querySelector('input[name="app-lang"]:checked');
+  const lang = langRadio ? langRadio.value : _lang;
+  await window.electronAPI.saveSettings({ ocrEngine: engine, googleVisionKey: apiKey, openaiKey, lang });
+  // Appliquer la langue immédiatement
+  applyLang(lang);
   closeModal();
-  t('Parametres enregistres');
+  t(_s('settings.saved'));
 }
 
 async function testGoogleVision() {
@@ -2322,6 +2986,42 @@ function clearSelection() {
   document.getElementById('btn-sel-paste')?.classList.remove('on');
 }
 
+// ─── Recadrage de page ────────────────────────────────────────────────────────
+async function selCrop() {
+  if (!currentSel || !currentPdfData) return;
+  const { PDFDocument } = PDFLib;
+  const { pageIdx, pdfX, pdfY, pdfW, pdfH } = currentSel;
+  if (pdfW < 4 || pdfH < 4) { t('Sélection trop petite pour recadrer.'); return; }
+
+  try {
+    const doc  = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
+    const page = doc.getPage(pageIdx - 1);
+    const { height: pgH } = page.getSize();
+
+    // PDF : axe Y depuis le bas — convertir depuis le haut (coordonnées écran)
+    const boxX = pdfX;
+    const boxY = pgH - pdfY - pdfH;
+    const boxW = pdfW;
+    const boxH = pdfH;
+
+    // Définir MediaBox et CropBox à la sélection
+    page.setMediaBox(boxX, boxY, boxW, boxH);
+    page.setCropBox (boxX, boxY, boxW, boxH);
+
+    const newBytes = await doc.save();
+    const newB64   = bytesToBase64(newBytes);
+    clearSelection();
+    await renderPDFFromData({
+      name: currentPdfName, size: newBytes.length,
+      data: newB64, filePath: currentFilePath,
+    }, true);
+    t('Page recadrée.');
+  } catch(e) {
+    console.error('[crop]', e);
+    t('Erreur recadrage : ' + e.message);
+  }
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // HISTORIQUE UNDO / REDO
 // ══════════════════════════════════════════════════════════════════════════════
@@ -2656,10 +3356,211 @@ function getSelCanvas() {
 function selCopy() {
   const cvs = getSelCanvas();
   if (!cvs) { t('Impossible de copier'); return; }
-  selClipboard = cvs.toDataURL('image/png').split(',')[1];
+  selClipboard     = cvs.toDataURL('image/png').split(',')[1];
+  selClipboardPdfW = currentSel.pdfW;
+  selClipboardPdfH = currentSel.pdfH;
+  selClipboardPxW  = currentSel.w;
+  selClipboardPxH  = currentSel.h;
+  selClipboardLx   = currentSel.lx;
+  selClipboardLy   = currentSel.ly;
+  selClipboardWrap = currentSel.wrap;
   document.getElementById('btn-sel-paste')?.classList.add('on');
+  // NE PAS écrire dans le clipboard système : Ctrl+V resterait dans le chemin externe
+  // et perdrait les dimensions/position. Le clipboard interne gère tout le copier-coller intra-app.
   t('Zone copiée (' + currentSel.w + '×' + currentSel.h + 'px)');
 }
+
+// ── Fonctions menu Édition ────────────────────────────────────────────────────
+function menuCopy() {
+  if (currentSel) { selCopy(); }
+  else { t('Sélectionnez d\'abord une zone avec l\'outil Sélection.'); }
+}
+
+function menuCut() {
+  if (!currentSel) { t('Sélectionnez d\'abord une zone avec l\'outil Sélection.'); return; }
+  selCopy();
+  selRedact(); // efface la zone source
+}
+
+function menuPaste() {
+  if (!currentPdfData) { t('Ouvrez d\'abord un PDF.'); return; }
+  // Utilise uniquement le clipboard interne (dimensions PDF exactes garanties)
+  // Pour coller une image externe, utiliser Ctrl+V
+  if (!selClipboard) { t('Rien à coller — copiez d\'abord une zone avec l\'outil Sélection.'); return; }
+  const wrap = selClipboardWrap || currentSel?.wrap || document.querySelector('.page-wrap');
+  if (!wrap) return;
+  const scale = baseFitScale * zoomLevel / 100;
+  const pxW = selClipboardPdfW * scale;
+  const pxH = selClipboardPdfH * scale;
+  const lx  = selClipboardLx;
+  const ly  = selClipboardLy;
+  clearSelection();
+  _createPasteOverlay(wrap, selClipboard, lx, ly, pxW, pxH, selClipboardPdfW, selClipboardPdfH);
+  t('Zone collée.');
+}
+
+// ── Coller une image depuis le presse-papiers système (image externe) ────────
+async function menuPasteExternal() {
+  if (!currentPdfData) { t('Ouvrez d\'abord un PDF.'); return; }
+  try {
+    const items = await navigator.clipboard.read();
+    for (const item of items) {
+      if (!item.types.includes('image/png') && !item.types.includes('image/jpeg')) continue;
+      const type = item.types.includes('image/png') ? 'image/png' : 'image/jpeg';
+      const blob = await item.getType(type);
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const b64 = ev.target.result.split(',')[1];
+        const img = new Image();
+        img.onload = () => {
+          const wrap = currentSel?.wrap || document.querySelector('.page-wrap');
+          if (!wrap) return;
+          const scale = baseFitScale * zoomLevel / 100;
+          const maxW = wrap.clientWidth * 0.8;
+          const W = Math.min(img.naturalWidth, maxW / scale) * scale;
+          const H = W * img.naturalHeight / img.naturalWidth;
+          clearSelection();
+          _createPasteOverlay(wrap, b64, 40, 40, W, H);
+          t('Image externe collée.');
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(blob);
+      return;
+    }
+    t('Aucune image dans le presse-papiers.');
+  } catch (err) {
+    t('Impossible de lire le presse-papiers : ' + err.message);
+  }
+}
+
+// ── Initialisation au chargement ──────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadLang(); // Charger la langue sauvegardée et appliquer les traductions
+  // Signaler à main.js que le renderer est prêt à recevoir un fichier
+  // (déclenche l'envoi du PDF passé en argument au lancement de l'app)
+  if (window.electronAPI?.rendererReady) window.electronAPI.rendererReady();
+});
+
+// ── Glisser-déposer d'image externe sur une page PDF ─────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const pagesEl = document.getElementById('pdf-pages');
+  if (!pagesEl) return;
+
+  pagesEl.addEventListener('dragover', e => {
+    if (!currentPdfData) return;
+    const hasFile = Array.from(e.dataTransfer.types).includes('Files');
+    if (!hasFile) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    // Surbrillance du wrap cible
+    const wrap = e.target.closest('.page-wrap');
+    document.querySelectorAll('.page-wrap.drag-over').forEach(w => { if (w !== wrap) w.classList.remove('drag-over'); });
+    if (wrap) wrap.classList.add('drag-over');
+  });
+
+  pagesEl.addEventListener('dragleave', e => {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      document.querySelectorAll('.page-wrap.drag-over').forEach(w => w.classList.remove('drag-over'));
+    }
+  });
+
+  pagesEl.addEventListener('drop', e => {
+    document.querySelectorAll('.page-wrap.drag-over').forEach(w => w.classList.remove('drag-over'));
+    if (!currentPdfData) return;
+    const file = Array.from(e.dataTransfer.files).find(f => f.type.startsWith('image/'));
+    if (!file) return;
+    e.preventDefault();
+
+    const wrap = e.target.closest('.page-wrap');
+    if (!wrap) return;
+
+    const rect = wrap.getBoundingClientRect();
+    const dropLx = e.clientX - rect.left;
+    const dropLy = e.clientY - rect.top;
+
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const b64 = ev.target.result.split(',')[1];
+      const img = new Image();
+      img.onload = () => {
+        const scale = baseFitScale * zoomLevel / 100;
+        const maxW = wrap.clientWidth * 0.8;
+        const W = Math.min(img.naturalWidth, maxW / scale) * scale;
+        const H = W * img.naturalHeight / img.naturalWidth;
+        // Centrer sur le point de dépôt
+        const lx = Math.max(0, dropLx - W / 2);
+        const ly = Math.max(0, dropLy - H / 2);
+        clearSelection();
+        _createPasteOverlay(wrap, b64, lx, ly, W, H);
+        t('Image déposée.');
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+});
+
+// ── Listener paste global — gère Ctrl+V quand pas de clipboard interne ────────
+document.addEventListener('paste', e => {
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+  if (!currentPdfData) return;
+
+  const items = e.clipboardData?.items;
+  // Cherche une image dans le presse-papiers système
+  if (items) {
+    for (const item of items) {
+      if (!item.type.startsWith('image/')) continue;
+      e.preventDefault();
+      const blob = item.getAsFile();
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const b64 = ev.target.result.split(',')[1];
+        // Si le b64 correspond à notre copie interne → utiliser dimensions et position d'origine
+        if (selClipboard && b64 === selClipboard) {
+          const wrap = selClipboardWrap || document.querySelector('.page-wrap');
+          if (!wrap) return;
+          const scale = baseFitScale * zoomLevel / 100;
+          const pxW = selClipboardPdfW * scale;
+          const pxH = selClipboardPdfH * scale;
+          clearSelection();
+          _createPasteOverlay(wrap, selClipboard, selClipboardLx, selClipboardLy, pxW, pxH, selClipboardPdfW, selClipboardPdfH);
+          t('Zone collée.');
+          return;
+        }
+        // Image externe réelle
+        const img = new Image();
+        img.onload = () => {
+          const wrap = currentSel?.wrap || document.querySelector('.page-wrap');
+          if (!wrap) return;
+          const scale = baseFitScale * zoomLevel / 100;
+          const maxW  = wrap.clientWidth * 0.8;
+          const W     = Math.min(img.naturalWidth, maxW / scale) * scale;
+          const H     = W * img.naturalHeight / img.naturalWidth;
+          clearSelection();
+          _createPasteOverlay(wrap, b64, 40, 40, W, H);
+          t('Image collée depuis le presse-papiers.');
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(blob);
+      return; // image trouvée — on s'arrête
+    }
+  }
+  // Aucune image externe → fallback copie interne (inter-onglets)
+  if (selClipboard) {
+    e.preventDefault();
+    const wrap = selClipboardWrap || currentSel?.wrap || document.querySelector('.page-wrap');
+    if (!wrap) return;
+    const scale = baseFitScale * zoomLevel / 100;
+    const pxW = selClipboardPdfW * scale;
+    const pxH = selClipboardPdfH * scale;
+    clearSelection();
+    _createPasteOverlay(wrap, selClipboard, selClipboardLx, selClipboardLy, pxW, pxH, selClipboardPdfW, selClipboardPdfH);
+    t('Zone collée.');
+  }
+});
 
 // ── Paste overlay globals ─────────────────────────────────────────────────────
 let pasteOverlay      = null;
@@ -2669,30 +3570,47 @@ let pasteOverlayRS    = false;
 let pasteOverlayDragOff = null;
 let pasteOverlayRSStart = null;
 let pasteHandles      = null; // { nw, ne, sw, se }
+let pasteOverlayB64   = null; // image courante de l'overlay (peut être externe)
+let pasteAspectLocked = true; // proportions verrouillées par défaut
+let pasteAspectRatio  = 1;    // w/h
+// Dimensions PDF de référence (stockées à la création, utilisées au commit)
+let pasteInitPdfW = 0, pasteInitPdfH = 0; // taille PDF originale en points
+let pasteInitPxW  = 0, pasteInitPxH  = 0; // taille écran initiale de l'overlay (px)
 
 function selPaste() {
   if (!selClipboard || !currentPdfData) { t('Rien à coller'); return; }
   const wrap = currentSel?.wrap || document.querySelector('.page-wrap');
   if (!wrap) return;
-  const lx = currentSel?.lx ?? 40;
-  const ly = currentSel?.ly ?? 40;
-  const pw = currentSel?.w  ?? 200;
-  const ph = currentSel?.h  ?? 150;
-  // Reset highlight + clear rubber-band selection
+  const lx    = currentSel?.lx   ?? 40;
+  const ly    = currentSel?.ly   ?? 40;
+  const pw    = currentSel?.w    ?? 200;
+  const ph    = currentSel?.h    ?? 150;
+  // Dimensions PDF de référence pour une reproduction 100% fidèle
+  const pdfW  = currentSel?.pdfW ?? (pw / (baseFitScale * zoomLevel / 100));
+  const pdfH  = currentSel?.pdfH ?? (ph / (baseFitScale * zoomLevel / 100));
   document.getElementById('btn-sel-paste')?.classList.remove('on');
   clearSelection();
-  // Désactiver l'outil Sélection → repasser en Lecture
   currentTool = 'Lecture';
   document.querySelectorAll('#tbar .tb').forEach(b => b.classList.remove('act'));
   document.getElementById('pdf-pages')?.classList.remove('sel-mode');
   const stTool = document.getElementById('st-tool');
   if (stTool) stTool.innerHTML = '<i class="fa-solid fa-arrow-pointer"></i>Lecture';
-  _createPasteOverlay(wrap, selClipboard, lx, ly, pw, ph);
+  _createPasteOverlay(wrap, selClipboard, lx, ly, pw, ph, pdfW, pdfH);
 }
 
-function _createPasteOverlay(wrap, b64, lx, ly, initW, initH) {
+function _createPasteOverlay(wrap, b64, lx, ly, initW, initH, pdfW, pdfH) {
   _removePasteOverlay();
-  pasteOverlayWrap = wrap;
+  const scale        = baseFitScale * zoomLevel / 100;
+  pasteOverlayWrap  = wrap;
+  pasteOverlayB64   = b64;
+  pasteAspectLocked = true;
+  pasteAspectRatio  = initW / Math.max(1, initH);
+  // Dimensions PDF de référence (ground truth pour taille fidèle)
+  pasteInitPdfW = pdfW  ?? initW / scale;
+  pasteInitPdfH = pdfH  ?? initH / scale;
+  pasteInitPxW  = initW;
+  pasteInitPxH  = initH;
+
   const div = document.createElement('div');
   div.id = 'paste-overlay';
   div.style.cssText =
@@ -2714,6 +3632,7 @@ function _createPasteOverlay(wrap, b64, lx, ly, initW, initH) {
     'border-radius:4px;padding:3px 8px;z-index:501;white-space:nowrap;';
   tb.innerHTML =
     '<span style="font-size:.62rem;color:var(--txt2);padding-right:4px;font-family:Cinzel,serif;letter-spacing:.05em">COLLER</span>' +
+    '<div class="img-tbtn" id="paste-lock-btn" onclick="_togglePasteAspect()" title="Verrouiller/déverrouiller les proportions" style="color:var(--gold)"><i class="fa-solid fa-lock"></i></div>' +
     '<div class="img-tbtn" onclick="_commitPasteOverlay()" title="Valider — coller définitivement" style="color:#5cb85c"><i class="fa-solid fa-check"></i></div>' +
     '<div class="img-tbtn" onclick="_removePasteOverlay()" title="Annuler" style="color:#e74c3c"><i class="fa-solid fa-xmark"></i></div>';
   div.appendChild(tb);
@@ -2775,8 +3694,17 @@ document.addEventListener('mousemove', e => {
     else if (s.dir === 'sw') { nw = s.w - dx; nl = s.l + dx; nh = s.h + dy; }
     else if (s.dir === 'ne') { nw = s.w + dx; nh = s.h - dy; nt = s.t + dy; }
     else if (s.dir === 'nw') { nw = s.w - dx; nl = s.l + dx; nh = s.h - dy; nt = s.t + dy; }
-    pasteOverlay.style.width  = Math.max(20, nw) + 'px';
-    pasteOverlay.style.height = Math.max(20, nh) + 'px';
+    nw = Math.max(20, nw);
+    // Verrouillage proportions : ajuste la dimension secondaire selon la direction
+    if (pasteAspectLocked) {
+      const useW = s.dir === 'ne' || s.dir === 'se' || (Math.abs(dx) >= Math.abs(dy));
+      if (useW) { nh = nw / pasteAspectRatio; if (s.dir === 'ne') nt = s.t + s.h - nh; }
+      else       { nw = nh * pasteAspectRatio; if (s.dir === 'nw') nl = s.l + s.w - nw; }
+    } else {
+      nh = Math.max(20, nh);
+    }
+    pasteOverlay.style.width  = nw + 'px';
+    pasteOverlay.style.height = nh + 'px';
     pasteOverlay.style.left   = nl + 'px';
     pasteOverlay.style.top    = nt + 'px';
   }
@@ -2788,25 +3716,44 @@ document.addEventListener('mouseup', () => {
   pasteOverlayRSStart = null;
 });
 
+function _togglePasteAspect() {
+  pasteAspectLocked = !pasteAspectLocked;
+  if (pasteAspectLocked && pasteOverlay) {
+    pasteAspectRatio = pasteOverlay.offsetWidth / Math.max(1, pasteOverlay.offsetHeight);
+  }
+  const btn = document.getElementById('paste-lock-btn');
+  if (btn) btn.innerHTML = pasteAspectLocked
+    ? '<i class="fa-solid fa-lock"></i>'
+    : '<i class="fa-solid fa-lock-open" style="opacity:.5"></i>';
+}
+
 function _removePasteOverlay() {
   if (pasteOverlay) { pasteOverlay.remove(); pasteOverlay = null; }
   if (pasteHandles) { Object.values(pasteHandles).forEach(h => h.remove()); pasteHandles = null; }
   pasteOverlayWrap = null; pasteOverlayDrag = false; pasteOverlayRS = false;
+  pasteOverlayB64  = null;
+  pasteInitPdfW = 0; pasteInitPdfH = 0; pasteInitPxW = 0; pasteInitPxH = 0;
 }
 
 async function _commitPasteOverlay() {
-  if (!pasteOverlay || !pasteOverlayWrap || !selClipboard || !currentPdfData) return;
+  if (!pasteOverlay || !pasteOverlayWrap || !pasteOverlayB64 || !currentPdfData) return;
   const scale       = baseFitScale * zoomLevel / 100;
-  const lx          = parseInt(pasteOverlay.style.left)  || 0;
-  const ly          = parseInt(pasteOverlay.style.top)   || 0;
+  const lx          = parseInt(pasteOverlay.style.left) || 0;
+  const ly          = parseInt(pasteOverlay.style.top)  || 0;
   const lw          = pasteOverlay.offsetWidth;
   const lh          = pasteOverlay.offsetHeight;
+  // Dimensions PDF : proportionnelles à la taille initiale de référence
+  // → si l'utilisateur n'a pas redimensionné, on obtient exactement pdfInitW/H
+  const scaleFactorW = lw / Math.max(1, pasteInitPxW);
+  const scaleFactorH = lh / Math.max(1, pasteInitPxH);
+  const pdfW        = pasteInitPdfW * scaleFactorW;
+  const pdfH        = pasteInitPdfH * scaleFactorH;
   const pdfX        = lx / scale;
   const pdfYfromTop = ly / scale;
-  const pdfW        = lw / scale;
-  const pdfH        = lh / scale;
   const wraps       = Array.from(document.querySelectorAll('.page-wrap'));
   const pageIdx     = wraps.indexOf(pasteOverlayWrap); // 0-based
+  // Sauvegarder b64 ET pageIdx AVANT _removePasteOverlay (qui met pasteOverlayB64 à null)
+  const b64         = pasteOverlayB64;
   _removePasteOverlay();
   try {
     const { PDFDocument } = PDFLib;
@@ -2814,7 +3761,7 @@ async function _commitPasteOverlay() {
     const page = doc.getPages()[pageIdx];
     const { height: pH } = page.getSize();
     const pdfY   = pH - pdfYfromTop - pdfH;
-    const embImg = await doc.embedPng(base64ToBytes(selClipboard));
+    const embImg = await doc.embedPng(base64ToBytes(b64));
     page.drawImage(embImg, { x: pdfX, y: pdfY, width: pdfW, height: pdfH });
     const data = bytesToBase64(await doc.save({ useObjectStreams: false }));
     await fastRerenderPage(data, [pageIdx + 1]);
@@ -3352,7 +4299,8 @@ if (window.electronAPI) {
 
 // ─── Raccourcis clavier ───────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT') return;
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable) return;
   const mod = e.metaKey || e.ctrlKey;
   if (mod && e.key === 's')                    { e.preventDefault(); menuAction('save'); }
   if (mod && e.key === 'z' && !e.shiftKey)    { e.preventDefault(); undoPDF(); }
@@ -3363,6 +4311,13 @@ document.addEventListener('keydown', e => {
   if (mod && e.key === '0')                    { e.preventDefault(); fitToPage(); }
   if (e.key === 'F11')                          { e.preventDefault(); toggleFullscreen(); }
   if (mod && e.key === '-')                    { e.preventDefault(); zoom(-1); }
+  if (mod && e.key === 'c' && currentSel)      { e.preventDefault(); menuCopy(); }
+  if (mod && e.key === 'x' && currentSel)      { e.preventDefault(); menuCut(); }
+  // Ctrl+V : clipboard interne → menuPaste() directement (taille+position exactes)
+  if (mod && e.key === 'v') {
+    if (selClipboard && currentPdfData) { e.preventDefault(); menuPaste(); }
+    // else : pas de preventDefault → le 'paste' event gérera l'image externe
+  }
   if (e.key === 'Escape') closeModal();
   if (!mod) {
     if (e.key === 'h' || e.key === 'H') setTool(null, 'Surligner');
@@ -9207,11 +10162,28 @@ function _wmFilterTokens(tokens, lowOpGS, opts) {
 }
 
 // ── Mode document scanné : filtrage pixel par pixel ──────────────────────────
-async function _wmRemoveScanned(pageIndices, setP) {
+// ── Helpers communs pour le mode scanné ──────────────────────────────────────
+function _wmBuildMask(d, W, H, gMin, gMax, TOL) {
+  const mask = new Uint8Array(W * H);
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      const r = d[i], g = d[i+1], b = d[i+2];
+      if (r >= gMin && r <= gMax && g >= gMin && g <= gMax && b >= gMin && b <= gMax
+          && Math.abs(r-g) < TOL && Math.abs(g-b) < TOL && Math.abs(r-b) < TOL) {
+        mask[y * W + x] = 1;
+      }
+    }
+  }
+  return mask;
+}
+
+// ── Mode standard : remplissage fond blanc ou couleur locale ─────────────────
+async function _wmRemoveScanned(pageIndices, setP, smartFill = false) {
   const { PDFDocument } = PDFLib;
   const gMin = parseInt(document.getElementById('rmwm-gmin').value) || 140;
   const gMax = parseInt(document.getElementById('rmwm-gmax').value) || 220;
-  const TOL  = 30; // tolérance entre canaux R/G/B pour définir "gris uniforme"
+  const TOL  = 30;
 
   setP(5, 'Chargement…');
   const newDoc = await PDFDocument.create();
@@ -9220,9 +10192,7 @@ async function _wmRemoveScanned(pageIndices, setP) {
     const pi = pageIndices[idx];
     setP(10 + Math.round(idx / pageIndices.length * 82), `Traitement page ${pi + 1}…`);
 
-    // Rendre la page en canvas via pdfjs
-    const pdfPage = currentPdfDoc.getPage ? currentPdfDoc.getPage(pi + 1)
-      : await currentPdfDoc.getPage(pi + 1);
+    const pdfPage = await currentPdfDoc.getPage(pi + 1);
     const viewport = pdfPage.getViewport({ scale: 2.0 });
     const canvas = document.createElement('canvas');
     canvas.width  = viewport.width;
@@ -9230,27 +10200,160 @@ async function _wmRemoveScanned(pageIndices, setP) {
     const ctx = canvas.getContext('2d');
     await pdfPage.render({ canvasContext: ctx, viewport }).promise;
 
-    // Filtrer les pixels gris (filigrane)
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const d = imgData.data;
-    let removed = 0;
-    for (let i = 0; i < d.length; i += 4) {
-      const r = d[i], g = d[i+1], b = d[i+2];
-      if (r >= gMin && r <= gMax && g >= gMin && g <= gMax && b >= gMin && b <= gMax
-          && Math.abs(r-g) < TOL && Math.abs(g-b) < TOL && Math.abs(r-b) < TOL) {
-        d[i] = d[i+1] = d[i+2] = 255; // blanc
-        removed++;
+    const W = canvas.width, H = canvas.height;
+    const mask = _wmBuildMask(d, W, H, gMin, gMax, TOL);
+
+    if (!smartFill) {
+      // Remplissage blanc simple
+      for (let i = 0; i < W * H; i++) {
+        if (!mask[i]) continue;
+        d[i*4] = d[i*4+1] = d[i*4+2] = 255;
+      }
+    } else {
+      // Remplissage couleur locale : snapshot puis voisins immédiats non-masqués
+      const NX = [-1,1,0,0,-2,2,0,0,-1,-1,1,1];
+      const NY = [0,0,-1,1,0,0,-2,2,-1,1,-1,1];
+      const orig = new Uint8ClampedArray(d);
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          if (!mask[y * W + x]) continue;
+          let rS = 0, gS = 0, bS = 0, cnt = 0;
+          for (let n = 0; n < NX.length; n++) {
+            const nx = x + NX[n], ny = y + NY[n];
+            if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+            if (mask[ny * W + nx]) continue;
+            const pi2 = (ny * W + nx) * 4;
+            rS += orig[pi2]; gS += orig[pi2+1]; bS += orig[pi2+2];
+            cnt++;
+          }
+          const i = (y * W + x) * 4;
+          if (cnt > 0) {
+            d[i] = Math.round(rS/cnt); d[i+1] = Math.round(gS/cnt); d[i+2] = Math.round(bS/cnt);
+          } else {
+            d[i] = d[i+1] = d[i+2] = 255; // repli blanc si aucun voisin
+          }
+        }
       }
     }
     ctx.putImageData(imgData, 0, 0);
 
-    // Convertir en PNG et intégrer
     const pngB64 = canvas.toDataURL('image/png').split(',')[1];
     const pngBytes = _b64ToU8(pngB64);
     const img = await newDoc.embedPng(pngBytes);
-    const [pgW, pgH] = [viewport.width / 2, viewport.height / 2]; // revenir à 1x
+    const [pgW, pgH] = [viewport.width / 2, viewport.height / 2];
     const newPage = newDoc.addPage([pgW, pgH]);
     newPage.drawImage(img, { x: 0, y: 0, width: pgW, height: pgH });
+  }
+
+  setP(95, 'Sauvegarde…');
+  const newBytes = await newDoc.save();
+  setP(100, 'Terminé');
+  return newBytes;
+}
+
+// ── Mode IA : inpainting via OpenAI Images Edit (DALL-E) ─────────────────────
+async function _wmRemoveScannedAI(pageIndices, setP, apiKey) {
+  const { PDFDocument } = PDFLib;
+  const gMin = parseInt(document.getElementById('rmwm-gmin').value) || 140;
+  const gMax = parseInt(document.getElementById('rmwm-gmax').value) || 220;
+  const TOL  = 30;
+  const TARGET = 1024; // gpt-image-1 : image carrée max 1024×1024
+
+  setP(5, 'Chargement…');
+  const newDoc = await PDFDocument.create();
+
+  for (let idx = 0; idx < pageIndices.length; idx++) {
+    const pi = pageIndices[idx];
+    setP(10 + Math.round(idx / pageIndices.length * 80), `Page ${pi + 1} — envoi à l'IA…`);
+
+    // ── Rendu page ──────────────────────────────────────────────────────────
+    const pdfPage = await currentPdfDoc.getPage(pi + 1);
+    const vp1     = pdfPage.getViewport({ scale: 1.0 });
+    const scale   = Math.min(TARGET / vp1.width, TARGET / vp1.height, 2.0);
+    const viewport = pdfPage.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width  = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await pdfPage.render({ canvasContext: ctx, viewport }).promise;
+
+    const W = canvas.width, H = canvas.height;
+    const imgData = ctx.getImageData(0, 0, W, H);
+    const d = imgData.data;
+    const mask = _wmBuildMask(d, W, H, gMin, gMax, TOL);
+
+    // ── Image opaque originale (1024×1024, fond blanc) ─────────────────────
+    const sqCanvas = document.createElement('canvas');
+    sqCanvas.width = sqCanvas.height = TARGET;
+    const sqCtx = sqCanvas.getContext('2d');
+    sqCtx.fillStyle = '#ffffff';
+    sqCtx.fillRect(0, 0, TARGET, TARGET);
+    sqCtx.drawImage(canvas, 0, 0);  // image originale, SANS aucune modification
+
+    // ── Masque séparé : transparent là où le filigrane, opaque ailleurs ────
+    // gpt-image-1 : zones alpha=0 dans le masque = zones à reconstruire dans l'image
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = maskCanvas.height = TARGET;
+    const mCtx = maskCanvas.getContext('2d');
+    // Fond entièrement opaque (zones à conserver)
+    mCtx.fillStyle = 'rgba(0,0,0,255)';
+    mCtx.fillRect(0, 0, TARGET, TARGET);
+    const mData = mCtx.getImageData(0, 0, TARGET, TARGET);
+    const md = mData.data;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (!mask[y * W + x]) continue;
+        const mi = (y * TARGET + x) * 4;
+        md[mi] = md[mi+1] = md[mi+2] = md[mi+3] = 0; // transparent = à reconstruire
+      }
+    }
+    mCtx.putImageData(mData, 0, 0);
+
+    // ── Appel IPC → main process + timer de progression ───────────────────
+    const imageB64 = sqCanvas.toDataURL('image/png').split(',')[1];
+    const maskB64  = maskCanvas.toDataURL('image/png').split(',')[1];
+    const basePct  = 10 + Math.round(idx / pageIndices.length * 80);
+    let elapsed = 0;
+    const ticker = setInterval(() => {
+      elapsed++;
+      const label = pageIndices.length > 1
+        ? `Page ${pi + 1}/${pageIndices.length} — IA en cours… ${elapsed}s`
+        : `Analyse IA en cours… ${elapsed}s`;
+      setP(basePct, label);
+    }, 1000);
+
+    let json;
+    try {
+      json = await electronAPI.openaiImageInpaint(
+        imageB64, maskB64,
+        'Remove the watermark text. Restore the original background underneath as if the watermark was never there. Do not modify any other content.',
+        apiKey
+      );
+    } finally {
+      clearInterval(ticker);
+    }
+    const resultB64 = json.data?.[0]?.b64_json;
+    if (!resultB64) throw new Error('Réponse IA vide');
+
+    // ── Recadrer au format original et intégrer ─────────────────────────────
+    const resultImg = await new Promise((res, rej) => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.onerror = rej;
+      img.src = 'data:image/png;base64,' + resultB64;
+    });
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = W; cropCanvas.height = H;
+    cropCanvas.getContext('2d').drawImage(resultImg, 0, 0, W, H, 0, 0, W, H);
+
+    const finalB64 = cropCanvas.toDataURL('image/png').split(',')[1];
+    const finalBytes = _b64ToU8(finalB64);
+    const img2 = await newDoc.embedPng(finalBytes);
+    const [pgW, pgH] = [W / scale, H / scale];
+    const newPage = newDoc.addPage([pgW, pgH]);
+    newPage.drawImage(img2, { x: 0, y: 0, width: pgW, height: pgH });
   }
 
   setP(95, 'Sauvegarde…');
@@ -9286,10 +10389,11 @@ async function doRemoveWatermarks() {
 
     // ── Mode document scanné ────────────────────────────────────────────────
     if (isScanned) {
-      const pageCount  = currentPdfDoc.numPages;
+      const pageCount   = currentPdfDoc.numPages;
       const pageIndices = scope === 'current' ? [curPage - 1]
         : Array.from({ length: pageCount }, (_, k) => k);
-      const newBytes = await _wmRemoveScanned(pageIndices, setP);
+      const useSmartFill = document.getElementById('rmwm-smartfill')?.checked;
+      const newBytes = await _wmRemoveScanned(pageIndices, setP, useSmartFill);
       const newB64   = bytesToBase64(newBytes);
       await renderPDFFromData({
         name: currentPdfName, size: Math.round(newBytes.length * 0.75),
@@ -9299,7 +10403,7 @@ async function doRemoveWatermarks() {
       res.style.background = 'rgba(46,204,113,.08)';
       res.style.borderColor = 'rgba(46,204,113,.3)';
       res.innerHTML = `<i class="fa-solid fa-circle-check" style="color:#2ecc71;margin-right:6px"></i>`
-        + `Filigrane supprimé par filtrage image.`;
+        + (useSmartFill ? 'Filigrane supprimé — remplissage fond coloré.' : 'Filigrane supprimé — fond blanc.');
       btn.disabled = false; prg.style.display = 'none';
       return;
     }
