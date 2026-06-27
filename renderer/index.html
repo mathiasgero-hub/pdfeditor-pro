@@ -1759,10 +1759,10 @@
       <div style="margin-bottom:14px;display:flex;flex-direction:column;gap:10px">
         <div style="display:flex;align-items:center;gap:12px">
           <span style="font-size:.78rem;color:var(--txt2);min-width:170px">Seuil de transparence</span>
-          <input type="range" id="rmwm-threshold" min="0.05" max="0.95" step="0.05" value="0.6"
+          <input type="range" id="rmwm-threshold" min="0.05" max="0.95" step="0.05" value="0.2"
             oninput="document.getElementById('rmwm-tval').textContent=Math.round(this.value*100)+'%'"
             style="flex:1">
-          <span id="rmwm-tval" style="font-size:.78rem;color:var(--gold);min-width:36px;text-align:right">60%</span>
+          <span id="rmwm-tval" style="font-size:.78rem;color:var(--gold);min-width:36px;text-align:right">20%</span>
         </div>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.8rem">
           <input type="checkbox" id="rmwm-rotated">

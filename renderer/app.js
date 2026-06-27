@@ -9153,8 +9153,15 @@ function _wmFilterTokens(tokens, lowOpGS, opts) {
         if (tk.t === 'o' && (tk.v === 'Do' || tk.v === 'BI')) hasImages = true;
         j++;
       }
-      // Supprimer seulement si : opacité basse OU (rotation forte + texte + PAS d'image)
-      if (lowOp || (removeRotated && hasRot && hasText && !hasImages)) {
+      // Taille du bloc en tokens (hors q et Q)
+      const blockTokens = j - i - 1;
+      // Un filigrane est un PETIT bloc (< 300 tokens) — les blocs de contenu principal
+      // sont bien plus grands : ne pas les supprimer même s'ils semblent correspondre.
+      const isSmallBlock = blockTokens < 300;
+
+      // Supprimer seulement si : petit bloc + opacité basse
+      //                       OU petit bloc + rotation forte + texte uniquement
+      if (isSmallBlock && (lowOp || (removeRotated && hasRot && hasText && !hasImages))) {
         i = j + 1; // ignorer tout le bloc q…Q
       } else {
         out.push(tokens[i]); // q
