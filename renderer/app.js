@@ -9131,6 +9131,9 @@ function _tokenizePdfCS(bytes) {
 }
 
 // ── suppression des blocs suspects (q…Q) dans la liste de tokens ──────────────
+// Rotation significative = sin(θ) > 0.5 → θ > 30°  (évite de supprimer les blocs légitimes)
+const _WM_ROT_THRESHOLD = 0.5;
+
 function _wmFilterTokens(tokens, lowOpGS, opts) {
   const { removeRotated = true } = opts;
   const out = [];
@@ -9138,7 +9141,7 @@ function _wmFilterTokens(tokens, lowOpGS, opts) {
   while (i < tokens.length) {
     if (tokens[i].t === 'o' && tokens[i].v === 'q') {
       let depth = 1, j = i + 1;
-      let lowOp = false, hasRot = false, hasText = false;
+      let lowOp = false, hasRot = false, hasText = false, hasImages = false;
       while (j < tokens.length) {
         const tk = tokens[j];
         if (tk.t === 'o' && tk.v === 'q') depth++;
@@ -9146,16 +9149,19 @@ function _wmFilterTokens(tokens, lowOpGS, opts) {
         // /GSname gs → vérifier opacité
         if (tk.t === 'o' && tk.v === 'gs' && tokens[j-1]?.t === 'n')
           if (lowOpGS.has(tokens[j-1].v.slice(1))) lowOp = true;
-        // cm avec composante rotation (b ou c non nuls)
+        // cm : rotation SIGNIFICATIVE seulement (|b| ou |c| > sin 30° ≈ 0.5)
         if (tk.t === 'o' && tk.v === 'cm' && j >= 6) {
           const b = tokens[j-5]?.n ?? 0, c = tokens[j-4]?.n ?? 0;
-          if (Math.abs(b) > 0.05 || Math.abs(c) > 0.05) hasRot = true;
+          if (Math.abs(b) > _WM_ROT_THRESHOLD || Math.abs(c) > _WM_ROT_THRESHOLD) hasRot = true;
         }
         // opérateurs de dessin de texte
         if (tk.t === 'o' && ['Tj', 'TJ', "'", '"'].includes(tk.v)) hasText = true;
+        // opérateurs image → ne pas supprimer un bloc qui contient une vraie image
+        if (tk.t === 'o' && (tk.v === 'Do' || tk.v === 'BI')) hasImages = true;
         j++;
       }
-      if (lowOp || (removeRotated && hasRot && hasText)) {
+      // Supprimer seulement si : opacité basse OU (rotation forte + texte + PAS d'image)
+      if (lowOp || (removeRotated && hasRot && hasText && !hasImages)) {
         i = j + 1; // ignorer tout le bloc q…Q
       } else {
         out.push(tokens[i]); // q
