@@ -129,17 +129,17 @@
 <div id="merge-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:11000;align-items:center;justify-content:center;">
   <div id="merge-panel">
     <div id="merge-hdr">
-      <span><i class="fa-solid fa-code-merge" style="margin-right:8px;color:var(--gold)"></i>Fusionner des PDFs</span>
+      <span><i class="fa-solid fa-code-merge" style="margin-right:8px;color:var(--gold)"></i>Fusionner images et PDFs</span>
       <span id="merge-close" onclick="closeMergePanel()"><i class="fa-solid fa-xmark"></i></span>
     </div>
 
     <!-- Zone de dépôt -->
     <div id="merge-drop" ondragover="event.preventDefault()" ondrop="mergeHandleDrop(event)">
       <i class="fa-solid fa-file-circle-plus" style="font-size:2rem;color:var(--gold);margin-bottom:10px;display:block"></i>
-      <div style="margin-bottom:10px;font-size:.9rem">Glissez vos PDFs ici</div>
+      <div style="margin-bottom:10px;font-size:.9rem">Glissez vos PDFs et images ici</div>
       <label id="merge-browse-btn">
         <i class="fa-solid fa-folder-open"></i> Parcourir
-        <input type="file" id="merge-file-input" accept=".pdf" multiple style="display:none" onchange="mergeHandleFiles(this.files)">
+        <input type="file" id="merge-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp,.bmp,.tiff,.tif" multiple style="display:none" onchange="mergeHandleFiles(this.files)">
       </label>
     </div>
 

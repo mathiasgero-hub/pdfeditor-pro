@@ -42,7 +42,7 @@ const LANG = {
     'menu.redact'          : 'Biffure définitive',
     // ── Menu Pages ───────────────────────────────────────────────────────────
     'menu.pages'           : 'Pages',
-    'menu.merge'           : 'Fusionner des PDFs',
+    'menu.merge'           : 'Fusionner images et PDFs',
     'menu.pagesize'        : 'Taille de la page',
     'menu.rotate'          : 'Pivoter',
     'menu.bookmarks'       : 'Gérer les signets',
@@ -148,7 +148,7 @@ const LANG = {
     'tip.redo'             : 'Rétablir (⇧⌘Z)',
     'tip.open'             : 'Ouvrir un PDF',
     'tip.save'             : 'Enregistrer (⌘S)',
-    'tip.merge'            : 'Fusionner plusieurs PDFs en un seul',
+    'tip.merge'            : 'Fusionner images et PDFs en un seul document',
     'tip.zoom_in'          : 'Zoom avant',
     'tip.zoom_out'         : 'Zoom arrière',
     'tip.fit'              : 'Ajuster à la fenêtre',
@@ -240,7 +240,7 @@ const LANG = {
     'menu.redact'          : 'Permanent redaction',
     // ── Menu Pages ───────────────────────────────────────────────────────────
     'menu.pages'           : 'Pages',
-    'menu.merge'           : 'Merge PDFs',
+    'menu.merge'           : 'Merge images & PDFs',
     'menu.pagesize'        : 'Page size',
     'menu.rotate'          : 'Rotate',
     'menu.bookmarks'       : 'Manage bookmarks',
@@ -346,7 +346,7 @@ const LANG = {
     'tip.redo'             : 'Redo (⇧⌘Z)',
     'tip.open'             : 'Open a PDF',
     'tip.save'             : 'Save (⌘S)',
-    'tip.merge'            : 'Merge multiple PDFs into one',
+    'tip.merge'            : 'Merge images & PDFs into one document',
     'tip.zoom_in'          : 'Zoom in',
     'tip.zoom_out'         : 'Zoom out',
     'tip.fit'              : 'Fit to window',
@@ -1288,10 +1288,14 @@ function closeMergePanel() {
 }
 
 // ── Réception fichiers ────────────────────────────────────────────────────────
+const MERGE_IMAGE_EXT = /\.(jpe?g|png|webp|bmp|tiff?)$/i;
+
 async function mergeHandleDrop(e) {
   e.preventDefault();
   document.getElementById('merge-drop').classList.remove('over');
-  const files = [...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith('.pdf'));
+  const files = [...e.dataTransfer.files].filter(f =>
+    f.name.toLowerCase().endsWith('.pdf') || MERGE_IMAGE_EXT.test(f.name)
+  );
   await mergeAddFilesFromList(files);
 }
 async function mergeHandleFiles(fl) {
@@ -1301,26 +1305,41 @@ async function mergeHandleFiles(fl) {
 
 async function mergeAddFilesFromList(files) {
   for (const file of files) {
+    const isImage = MERGE_IMAGE_EXT.test(file.name);
     const data = await new Promise((res, rej) => {
       const fr = new FileReader();
-      fr.onload  = e => res(e.target.result.split(',')[1]);
+      fr.onload  = ev => res(ev.target.result.split(',')[1]);
       fr.onerror = rej;
       fr.readAsDataURL(file);
     });
-    try {
-      // Utiliser PDF.js (tolerant aux refs invalides) pour compter les pages
-      const pdfJsDoc = await pdfjsLib.getDocument({ data: base64ToBytes(data) }).promise;
-      const np       = pdfJsDoc.numPages;
-      const item  = { name: file.name, data, pageCount: np,
-                      selectedPages: new Set(Array.from({length:np},(_,i)=>i)),
-                      thumbUrl: null, pdfDoc: null, ppRendered: false };
+
+    if (isImage) {
+      // Image → une seule "page", vignette directe
+      const mimeType = file.type || (/\.png$/i.test(file.name) ? 'image/png' : 'image/jpeg');
+      const thumbUrl = 'data:' + mimeType + ';base64,' + data;
+      const item = {
+        name: file.name, data, mimeType, isImage: true,
+        pageCount: 1,
+        selectedPages: new Set([0]),
+        thumbUrl,
+        ppRendered: true  // pas de page-picker pour les images
+      };
       mergeItems.push(item);
-      const idx = mergeItems.length - 1;
-      // Render first-page thumbnail via PDF.js
-      item.thumbUrl = await mergeRenderThumb(data, 52, 68);
       mergeRenderList();
-    } catch(e) {
-      t('Erreur : ' + file.name + ' — ' + e.message);
+    } else {
+      // PDF
+      try {
+        const pdfJsDoc = await pdfjsLib.getDocument({ data: base64ToBytes(data) }).promise;
+        const np = pdfJsDoc.numPages;
+        const item = { name: file.name, data, isImage: false, pageCount: np,
+                       selectedPages: new Set(Array.from({length:np},(_,i)=>i)),
+                       thumbUrl: null, pdfDoc: null, ppRendered: false };
+        mergeItems.push(item);
+        item.thumbUrl = await mergeRenderThumb(data, 52, 68);
+        mergeRenderList();
+      } catch(e) {
+        t('Erreur : ' + file.name + ' — ' + e.message);
+      }
     }
   }
   mergeSummary();
@@ -1357,20 +1376,27 @@ function mergeRenderList() {
     row.dataset.idx = idx;
     row.draggable = true;
 
+    const metaLabel = item.isImage
+      ? 'Image'
+      : item.pageCount + ' page' + (item.pageCount > 1 ? 's' : '');
+    const fallbackIcon = item.isImage
+      ? '<i class="fa-regular fa-image" style="color:var(--gold);font-size:1.4rem"></i>'
+      : '<i class="fa-solid fa-file-pdf" style="color:var(--gold);font-size:1.4rem"></i>';
+
     row.innerHTML =
       '<div class="merge-drag" title="Réorganiser">⠿</div>' +
       '<div class="merge-thumb-wrap">' +
         (item.thumbUrl
           ? '<img class="merge-thumb" src="' + item.thumbUrl + '" alt="p1">'
-          : '<i class="fa-solid fa-file-pdf" style="color:var(--gold);font-size:1.4rem"></i>') +
+          : fallbackIcon) +
       '</div>' +
       '<div class="merge-info">' +
         '<div class="merge-doc-name" title="' + item.name + '">' + item.name + '</div>' +
-        '<div class="merge-doc-meta">' + item.pageCount + ' page' + (item.pageCount>1?'s':'') + '</div>' +
+        '<div class="merge-doc-meta">' + metaLabel + '</div>' +
         '<div class="merge-sel-tag" id="mst-' + idx + '">' + selInfo + '</div>' +
       '</div>' +
       '<div class="merge-item-btns">' +
-        '<div class="merge-ib" onclick="mergeTogglePP(' + idx + ')"><i class="fa-regular fa-file-lines"></i> Pages</div>' +
+        (!item.isImage ? '<div class="merge-ib" onclick="mergeTogglePP(' + idx + ')"><i class="fa-regular fa-file-lines"></i> Pages</div>' : '') +
         '<div class="merge-ib del" onclick="mergeRemove(' + idx + ')"><i class="fa-solid fa-xmark"></i></div>' +
       '</div>';
 
@@ -1485,34 +1511,64 @@ async function doMerge() {
       const item  = mergeItems[di];
       const pages = [...item.selectedPages].sort((a,b) => a-b);
       if (!pages.length) continue;
-      let copied = [];
-      try {
-        const src = await PDFDocument.load(base64ToBytes(item.data), { ignoreEncryption: true });
-        copied = await merged.copyPages(src, pages);
-        copied.forEach(pg => merged.addPage(pg));
-      } catch(eLib) {
-        // Fallback rasterisation via PDF.js pour les PDFs incompatibles avec pdf-lib
-        const pdfJsDoc = await pdfjsLib.getDocument({ data: base64ToBytes(item.data) }).promise;
-        for (const pi of pages) {
-          const page = await pdfJsDoc.getPage(pi + 1);
-          const vp0  = page.getViewport({ scale: 1 });
-          const scale = Math.min(2, 1200 / Math.max(vp0.width, vp0.height));
-          const vp   = page.getViewport({ scale });
-          const cv   = document.createElement('canvas');
-          cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
-          await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
-          page.cleanup();
-          const jpgB64 = cv.toDataURL('image/jpeg', 0.90).split(',')[1];
-          const embImg = await merged.embedJpg(base64ToBytes(jpgB64));
-          const np     = merged.addPage([vp0.width, vp0.height]);
-          np.drawImage(embImg, { x: 0, y: 0, width: vp0.width, height: vp0.height });
-          copied.push(np);
+      let lastPage = null;
+
+      if (item.isImage) {
+        // ── Fichier image → une page PDF aux dimensions de l'image ──────────────
+        const bytes = base64ToBytes(item.data);
+        let embImg;
+        try {
+          if (item.mimeType === 'image/png') {
+            embImg = await merged.embedPng(bytes);
+          } else {
+            embImg = await merged.embedJpg(bytes);
+          }
+        } catch {
+          // Format non supporté directement (webp, bmp, tiff…) → conversion canvas
+          const dataUrl = 'data:' + (item.mimeType || 'image/jpeg') + ';base64,' + item.data;
+          const img = await new Promise((res, rej) => {
+            const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = dataUrl;
+          });
+          const cv = document.createElement('canvas');
+          cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+          cv.getContext('2d').drawImage(img, 0, 0);
+          const jpgB64 = cv.toDataURL('image/jpeg', 0.92).split(',')[1];
+          embImg = await merged.embedJpg(base64ToBytes(jpgB64));
         }
-        t('ℹ ' + item.name + ' : rasterisé (format partiel)');
+        const { width, height } = embImg.scale(1);
+        lastPage = merged.addPage([width, height]);
+        lastPage.drawImage(embImg, { x: 0, y: 0, width, height });
+      } else {
+        // ── Fichier PDF ──────────────────────────────────────────────────────────
+        let copied = [];
+        try {
+          const src = await PDFDocument.load(base64ToBytes(item.data), { ignoreEncryption: true });
+          copied = await merged.copyPages(src, pages);
+          copied.forEach(pg => { lastPage = merged.addPage(pg); });
+        } catch(eLib) {
+          // Fallback rasterisation via PDF.js pour les PDFs incompatibles avec pdf-lib
+          const pdfJsDoc = await pdfjsLib.getDocument({ data: base64ToBytes(item.data) }).promise;
+          for (const pi of pages) {
+            const page = await pdfJsDoc.getPage(pi + 1);
+            const vp0  = page.getViewport({ scale: 1 });
+            const scale = Math.min(2, 1200 / Math.max(vp0.width, vp0.height));
+            const vp   = page.getViewport({ scale });
+            const cv   = document.createElement('canvas');
+            cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+            await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+            page.cleanup();
+            const jpgB64 = cv.toDataURL('image/jpeg', 0.90).split(',')[1];
+            const embImg = await merged.embedJpg(base64ToBytes(jpgB64));
+            lastPage = merged.addPage([vp0.width, vp0.height]);
+            lastPage.drawImage(embImg, { x: 0, y: 0, width: vp0.width, height: vp0.height });
+          }
+          t('ℹ ' + item.name + ' : rasterisé (format partiel)');
+        }
       }
+
       // Page blanche séparatrice (sauf après le dernier doc)
-      if (blank && di < mergeItems.length - 1 && copied.length) {
-        const { width, height } = copied[0].getSize();
+      if (blank && di < mergeItems.length - 1 && lastPage) {
+        const { width, height } = lastPage.getSize();
         merged.addPage([width, height]);
       }
     }
