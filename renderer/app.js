@@ -9248,18 +9248,23 @@ async function doRemoveWatermarks() {
         try { stream = doc.context.lookup(ref); } catch(_) { return 0; }
         if (!(stream instanceof PDFRawStream)) return 0;
 
-        const filterVal  = stream.dict.get(PDFName.of('Filter'));
-        const filterName = filterVal?.encodedName?.replace(/^\//, '')
-          ?? filterVal?.decodeText?.() ?? '';
-        // Ignorer si paramètre prédicteur présent (images)
+        // Résoudre le filtre (peut être PDFRef, PDFName ou PDFArray)
+        const rawFilter  = stream.dict.get(PDFName.of('Filter'));
+        const filterObj  = rawFilter ? doc.context.lookup(rawFilter) : null;
+        // Chaîne de filtres multiples ou filtre inconnu → ignorer ce stream
+        if (filterObj instanceof PDFArray) return 0;
+        const filterName = filterObj?.encodedName?.replace(/^\//, '')
+          ?? filterObj?.decodeText?.() ?? '';
+        // Ignorer si paramètre prédicteur présent (images) ou filtre non décompressable
         if (stream.dict.get(PDFName.of('DecodeParms'))) return 0;
+        if (filterName && filterName !== 'FlateDecode' && filterName !== 'Fl') return 0;
 
         let bytes = stream.contents;
         if (filterName === 'FlateDecode' || filterName === 'Fl') {
           try { bytes = await _pdfInflate(bytes); } catch(_) { return 0; }
-        } else if (filterName && filterName !== '') {
-          return 0; // filtre non supporté, on ignore
         }
+        // Si filterName === '' : stream non compressé, on traite directement
+        if (!filterName && bytes.length > 0 && bytes[0] === 0x78) return 0; // sécurité anti-zlib brut
 
         const tokens    = _tokenizePdfCS(bytes);
         const processed = _wmFilterTokens(tokens, lowOpGS, { removeRotated });
