@@ -9124,8 +9124,16 @@ function _tokenizePdfCS(bytes) {
 }
 
 // ── suppression des blocs suspects (q…Q) dans la liste de tokens ──────────────
-// Rotation significative = sin(θ) > 0.5 → θ > 30°  (évite de supprimer les blocs légitimes)
+// Rotation significative = sin(θ) > 0.5 → θ > 30°
 const _WM_ROT_THRESHOLD = 0.5;
+
+function _hasSignificantRotation(tokens, opIdx) {
+  // Vérifie si le token d'opérateur (cm ou Tm) à opIdx a une rotation significative
+  if (opIdx < 6) return false;
+  const b = tokens[opIdx-5]?.n ?? 0;
+  const c = tokens[opIdx-4]?.n ?? 0;
+  return Math.abs(b) > _WM_ROT_THRESHOLD || Math.abs(c) > _WM_ROT_THRESHOLD;
+}
 
 function _wmFilterTokens(tokens, lowOpGS, opts) {
   const { removeRotated = true } = opts;
@@ -9134,42 +9142,57 @@ function _wmFilterTokens(tokens, lowOpGS, opts) {
   while (i < tokens.length) {
     if (tokens[i].t === 'o' && tokens[i].v === 'q') {
       let depth = 1, j = i + 1;
-      let lowOp = false, hasRot = false, hasText = false, hasImages = false;
+      let lowOp = false, hasCmRot = false, hasTmRot = false;
+      let hasText = false, hasInlineImg = false, hasXObject = false;
+
       while (j < tokens.length) {
         const tk = tokens[j];
         if (tk.t === 'o' && tk.v === 'q') depth++;
         if (tk.t === 'o' && tk.v === 'Q') { depth--; if (!depth) break; }
-        // /GSname gs → vérifier opacité
+
+        // GS avec opacité basse
         if (tk.t === 'o' && tk.v === 'gs' && tokens[j-1]?.t === 'n')
           if (lowOpGS.has(tokens[j-1].v.slice(1))) lowOp = true;
-        // cm : rotation SIGNIFICATIVE seulement (|b| ou |c| > sin 30° ≈ 0.5)
-        if (tk.t === 'o' && tk.v === 'cm' && j >= 6) {
-          const b = tokens[j-5]?.n ?? 0, c = tokens[j-4]?.n ?? 0;
-          if (Math.abs(b) > _WM_ROT_THRESHOLD || Math.abs(c) > _WM_ROT_THRESHOLD) hasRot = true;
-        }
-        // opérateurs de dessin de texte
+
+        // cm (transformation CTM) avec rotation
+        if (tk.t === 'o' && tk.v === 'cm' && _hasSignificantRotation(tokens, j)) hasCmRot = true;
+
+        // Tm (text matrix) avec rotation — fréquent pour les filigranes en diagonale
+        if (tk.t === 'o' && tk.v === 'Tm' && _hasSignificantRotation(tokens, j)) hasTmRot = true;
+
+        // Opérateurs de dessin de texte
         if (tk.t === 'o' && ['Tj', 'TJ', "'", '"'].includes(tk.v)) hasText = true;
-        // opérateurs image → ne pas supprimer un bloc qui contient une vraie image
-        if (tk.t === 'o' && (tk.v === 'Do' || tk.v === 'BI')) hasImages = true;
+
+        // Image inline (données binaires brutes) — toujours préserver
+        if (tk.t === 'o' && tk.v === 'BI') hasInlineImg = true;
+
+        // Do = XObject (peut être Form = filigrane, ou Image = à préserver)
+        if (tk.t === 'o' && tk.v === 'Do') hasXObject = true;
+
         j++;
       }
-      // Taille du bloc (entre q et Q, exclus)
+
+      const hasRot = hasCmRot || hasTmRot;
       const blockTokens = j - i - 1;
-      // Seuls les petits blocs sont des candidats filigrane (< 300 tokens)
-      const isSmallBlock = blockTokens < 300;
+      const isSmallBlock = blockTokens < 600; // augmenté à 600
 
-      // Critère rotation : texte diagonal + pas d'image + petit bloc
-      const matchRot = removeRotated && hasRot && hasText && !hasImages && isSmallBlock;
-      // Critère opacité : UNIQUEMENT si la rotation est AUSSI présente (évite les faux positifs)
-      // Car beaucoup de PDFs utilisent des ExtGState < threshold pour du contenu normal.
-      const matchOp  = lowOp && hasRot && hasText && !hasImages && isSmallBlock;
+      // Pattern filigrane Form XObject : q [gs] /Name Do Q — petit bloc, sans texte direct
+      // Filigrane en overlay (ex. SPECIMEN en XObject)
+      const isXObjectWatermark = lowOp && hasXObject && !hasText && !hasInlineImg
+        && blockTokens < 20;
 
-      if (matchRot || matchOp) {
-        i = j + 1; // ignorer tout le bloc q…Q
+      // Filigrane texte diagonal : rotation (cm ou Tm) + texte + pas d'image inline
+      const matchRot = removeRotated && hasRot && hasText && !hasInlineImg && isSmallBlock;
+
+      // Opacité + rotation combinées (double critère = très précis)
+      const matchOp  = lowOp && hasRot && hasText && !hasInlineImg && isSmallBlock;
+
+      if (isXObjectWatermark || matchRot || matchOp) {
+        i = j + 1;
       } else {
-        out.push(tokens[i]); // q
-        out.push(..._wmFilterTokens(tokens.slice(i + 1, j), lowOpGS, opts)); // récursif
-        if (j < tokens.length) out.push(tokens[j]); // Q
+        out.push(tokens[i]);
+        out.push(..._wmFilterTokens(tokens.slice(i + 1, j), lowOpGS, opts));
+        if (j < tokens.length) out.push(tokens[j]);
         i = j + 1;
       }
     } else {
