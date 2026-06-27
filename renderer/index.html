@@ -1768,6 +1768,26 @@
           <input type="checkbox" id="rmwm-rotated" checked>
           Supprimer textes en diagonale (CONFIDENTIEL, BROUILLON…)
         </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.8rem;margin-top:6px">
+          <input type="checkbox" id="rmwm-scanned">
+          Document scanné — suppression par image (filtre gris)
+        </label>
+        <div id="rmwm-gray-opts" style="display:none;margin-top:10px;padding:10px 12px;background:rgba(0,0,0,.15);border-radius:4px;display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="font-size:.75rem;color:var(--txt2);min-width:130px">Gris min (0-255)</span>
+            <input type="range" id="rmwm-gmin" min="80" max="200" value="140"
+              oninput="document.getElementById('rmwm-gmin-v').textContent=this.value"
+              style="flex:1">
+            <span id="rmwm-gmin-v" style="font-size:.75rem;color:var(--gold);min-width:30px">140</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="font-size:.75rem;color:var(--txt2);min-width:130px">Gris max (0-255)</span>
+            <input type="range" id="rmwm-gmax" min="150" max="250" value="220"
+              oninput="document.getElementById('rmwm-gmax-v').textContent=this.value"
+              style="flex:1">
+            <span id="rmwm-gmax-v" style="font-size:.75rem;color:var(--gold);min-width:30px">220</span>
+          </div>
+        </div>
       </div>
       <div id="rmwm-progress" style="display:none;margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">

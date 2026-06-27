@@ -9038,6 +9038,10 @@ function openRemoveWMPanel() {
   document.getElementById('rmwm-result').style.display = 'none';
   document.getElementById('rmwm-btn').disabled = false;
   document.getElementById('rmwm-overlay').style.display = 'flex';
+  // Toggle options doc scanné
+  document.getElementById('rmwm-scanned').onchange = function() {
+    document.getElementById('rmwm-gray-opts').style.display = this.checked ? 'flex' : 'none';
+  };
 }
 
 function closeRemoveWMPanel() {
@@ -9202,6 +9206,59 @@ function _wmFilterTokens(tokens, lowOpGS, opts) {
   return out;
 }
 
+// ── Mode document scanné : filtrage pixel par pixel ──────────────────────────
+async function _wmRemoveScanned(pageIndices, setP) {
+  const { PDFDocument } = PDFLib;
+  const gMin = parseInt(document.getElementById('rmwm-gmin').value) || 140;
+  const gMax = parseInt(document.getElementById('rmwm-gmax').value) || 220;
+  const TOL  = 30; // tolérance entre canaux R/G/B pour définir "gris uniforme"
+
+  setP(5, 'Chargement…');
+  const newDoc = await PDFDocument.create();
+
+  for (let idx = 0; idx < pageIndices.length; idx++) {
+    const pi = pageIndices[idx];
+    setP(10 + Math.round(idx / pageIndices.length * 82), `Traitement page ${pi + 1}…`);
+
+    // Rendre la page en canvas via pdfjs
+    const pdfPage = currentPdfDoc.getPage ? currentPdfDoc.getPage(pi + 1)
+      : await currentPdfDoc.getPage(pi + 1);
+    const viewport = pdfPage.getViewport({ scale: 2.0 });
+    const canvas = document.createElement('canvas');
+    canvas.width  = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await pdfPage.render({ canvasContext: ctx, viewport }).promise;
+
+    // Filtrer les pixels gris (filigrane)
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = imgData.data;
+    let removed = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i+1], b = d[i+2];
+      if (r >= gMin && r <= gMax && g >= gMin && g <= gMax && b >= gMin && b <= gMax
+          && Math.abs(r-g) < TOL && Math.abs(g-b) < TOL && Math.abs(r-b) < TOL) {
+        d[i] = d[i+1] = d[i+2] = 255; // blanc
+        removed++;
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+
+    // Convertir en PNG et intégrer
+    const pngB64 = canvas.toDataURL('image/png').split(',')[1];
+    const pngBytes = _b64ToU8(pngB64);
+    const img = await newDoc.embedPng(pngBytes);
+    const [pgW, pgH] = [viewport.width / 2, viewport.height / 2]; // revenir à 1x
+    const newPage = newDoc.addPage([pgW, pgH]);
+    newPage.drawImage(img, { x: 0, y: 0, width: pgW, height: pgH });
+  }
+
+  setP(95, 'Sauvegarde…');
+  const newBytes = await newDoc.save();
+  setP(100, 'Terminé');
+  return newBytes;
+}
+
 // ── traitement principal ──────────────────────────────────────────────────────
 async function doRemoveWatermarks() {
   if (!currentPdfDoc || !currentPdfData) return;
@@ -9218,13 +9275,35 @@ async function doRemoveWatermarks() {
     document.getElementById('rmwm-progress-txt').textContent = txt;
   };
 
-  const threshold    = parseFloat(document.getElementById('rmwm-threshold').value);
+  const threshold     = parseFloat(document.getElementById('rmwm-threshold').value);
   const removeRotated = document.getElementById('rmwm-rotated').checked;
-  const scope        = document.querySelector('input[name="rmwm-scope"]:checked')?.value || 'all';
-  const curPage      = parseInt(document.getElementById('cur-page')?.textContent) || 1;
+  const isScanned     = document.getElementById('rmwm-scanned').checked;
+  const scope         = document.querySelector('input[name="rmwm-scope"]:checked')?.value || 'all';
+  const curPage       = parseInt(document.getElementById('cur-page')?.textContent) || 1;
 
   try {
     const { PDFDocument, PDFName, PDFRawStream, PDFArray, PDFNumber } = PDFLib;
+
+    // ── Mode document scanné ────────────────────────────────────────────────
+    if (isScanned) {
+      const pageCount  = currentPdfDoc.numPages;
+      const pageIndices = scope === 'current' ? [curPage - 1]
+        : Array.from({ length: pageCount }, (_, k) => k);
+      const newBytes = await _wmRemoveScanned(pageIndices, setP);
+      const newB64   = bytesToBase64(newBytes);
+      await renderPDFFromData({
+        name: currentPdfName, size: Math.round(newBytes.length * 0.75),
+        data: newB64, filePath: currentFilePath,
+      }, true);
+      res.style.display = 'block';
+      res.style.background = 'rgba(46,204,113,.08)';
+      res.style.borderColor = 'rgba(46,204,113,.3)';
+      res.innerHTML = `<i class="fa-solid fa-circle-check" style="color:#2ecc71;margin-right:6px"></i>`
+        + `Filigrane supprimé par filtrage image.`;
+      btn.disabled = false; prg.style.display = 'none';
+      return;
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     setP(5, 'Chargement du document…');
     const doc = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
