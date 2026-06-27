@@ -1144,7 +1144,7 @@ body.redact-mode #redact-count-badge { display:block !important; }
 .tbl-empty { text-align:center;padding:40px;font-size:.78rem;color:var(--txt2);font-style:italic; }
 
 /* ══ Compresser ═══════════════════════════════════════════════════════════════ */
-#comp-panel, #enh-panel { background:var(--bg-panel);border:1px solid var(--gold);border-top:3px solid var(--gold);
+#comp-panel, #enh-panel, #rmwm-panel { background:var(--bg-panel);border:1px solid var(--gold);border-top:3px solid var(--gold);
   border-radius:6px;width:520px;max-width:97vw;display:flex;flex-direction:column; }
 
 /* ══ Mesures canvas overlay ═══════════════════════════════════════════════════ */

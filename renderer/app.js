@@ -9023,3 +9023,303 @@ document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   if (!e.metaKey && !e.ctrlKey && !e.altKey && e.key === '?') openHelpModal();
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SUPPRESSION DES FILIGRANES
+// ══════════════════════════════════════════════════════════════════════════════
+
+function openRemoveWMPanel() {
+  if (!currentPdfDoc) { t('Ouvrez d\'abord un PDF.'); return; }
+  const np = currentPdfDoc.numPages;
+  const curPage = parseInt(document.getElementById('cur-page')?.textContent) || 1;
+  document.getElementById('rmwm-page-info').textContent =
+    `Document : ${np} page${np > 1 ? 's' : ''} · Page courante : ${curPage}`;
+  document.getElementById('rmwm-progress').style.display = 'none';
+  document.getElementById('rmwm-result').style.display = 'none';
+  document.getElementById('rmwm-btn').disabled = false;
+  document.getElementById('rmwm-overlay').style.display = 'flex';
+}
+
+function closeRemoveWMPanel() {
+  document.getElementById('rmwm-overlay').style.display = 'none';
+}
+
+// ── helpers inflate/deflate (Web Streams API, disponible dans Electron/Chromium)
+async function _pdfInflate(data) {
+  const arr = data instanceof Uint8Array ? data : new Uint8Array(data);
+  for (const fmt of ['deflate', 'deflate-raw']) {
+    try {
+      const ds = new DecompressionStream(fmt);
+      const wr = ds.writable.getWriter();
+      wr.write(arr); wr.close();
+      const rd = ds.readable.getReader();
+      const chunks = [];
+      while (true) { const { done, value } = await rd.read(); if (done) break; chunks.push(value); }
+      const total = chunks.reduce((a, c) => a + c.length, 0);
+      const out = new Uint8Array(total);
+      let off = 0;
+      for (const c of chunks) { out.set(c, off); off += c.length; }
+      return out;
+    } catch(e) { if (fmt === 'deflate-raw') throw e; }
+  }
+}
+
+async function _pdfDeflate(data) {
+  const arr = data instanceof Uint8Array ? data : new Uint8Array(data);
+  const cs = new CompressionStream('deflate');
+  const wr = cs.writable.getWriter();
+  wr.write(arr); wr.close();
+  const rd = cs.readable.getReader();
+  const chunks = [];
+  while (true) { const { done, value } = await rd.read(); if (done) break; chunks.push(value); }
+  const total = chunks.reduce((a, c) => a + c.length, 0);
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
+}
+
+// ── tokeniseur de flux de contenu PDF ────────────────────────────────────────
+function _tokenizePdfCS(bytes) {
+  const str = new TextDecoder('latin1').decode(bytes);
+  const tokens = [];
+  let i = 0;
+  while (i < str.length) {
+    if (' \t\n\r\f\0'.includes(str[i])) { i++; continue; }
+    if (str[i] === '%') { while (i < str.length && str[i] !== '\n' && str[i] !== '\r') i++; continue; }
+    if (str[i] === '(') {
+      let d = 1, v = '('; i++;
+      while (i < str.length && d > 0) {
+        if (str[i] === '\\') { v += str[i] + (str[i+1] || ''); i += 2; continue; }
+        if (str[i] === '(') d++; if (str[i] === ')') d--;
+        v += str[i++];
+      }
+      tokens.push({ t: 's', v });
+    } else if (str[i] === '<' && str[i+1] === '<') {
+      let d = 1, v = '<<'; i += 2;
+      while (i < str.length - 1 && d > 0) {
+        if (str[i] === '<' && str[i+1] === '<') { d++; v += '<<'; i += 2; }
+        else if (str[i] === '>' && str[i+1] === '>') { d--; v += '>>'; i += 2; }
+        else v += str[i++];
+      }
+      tokens.push({ t: 'd', v });
+    } else if (str[i] === '<') {
+      let v = '<'; i++;
+      while (i < str.length && str[i] !== '>') v += str[i++];
+      v += '>'; i++;
+      tokens.push({ t: 'h', v });
+    } else if (str[i] === '[') {
+      let d = 1, v = '['; i++;
+      while (i < str.length && d > 0) {
+        if (str[i] === '[') d++; if (str[i] === ']') d--;
+        v += str[i++];
+      }
+      tokens.push({ t: 'a', v });
+    } else if (str[i] === '/') {
+      let v = '/'; i++;
+      while (i < str.length && !' \t\n\r\f\0[]<>()/%'.includes(str[i])) v += str[i++];
+      tokens.push({ t: 'n', v });
+    } else {
+      let v = '';
+      while (i < str.length && !' \t\n\r\f\0[]<>()/%'.includes(str[i])) v += str[i++];
+      if (!v) { i++; continue; }
+      const n = parseFloat(v);
+      tokens.push({ t: isNaN(n) ? 'o' : 'm', v, n: isNaN(n) ? undefined : n });
+    }
+  }
+  return tokens;
+}
+
+// ── suppression des blocs suspects (q…Q) dans la liste de tokens ──────────────
+function _wmFilterTokens(tokens, lowOpGS, opts) {
+  const { removeRotated = true } = opts;
+  const out = [];
+  let i = 0;
+  while (i < tokens.length) {
+    if (tokens[i].t === 'o' && tokens[i].v === 'q') {
+      let depth = 1, j = i + 1;
+      let lowOp = false, hasRot = false, hasText = false;
+      while (j < tokens.length) {
+        const tk = tokens[j];
+        if (tk.t === 'o' && tk.v === 'q') depth++;
+        if (tk.t === 'o' && tk.v === 'Q') { depth--; if (!depth) break; }
+        // /GSname gs → vérifier opacité
+        if (tk.t === 'o' && tk.v === 'gs' && tokens[j-1]?.t === 'n')
+          if (lowOpGS.has(tokens[j-1].v.slice(1))) lowOp = true;
+        // cm avec composante rotation (b ou c non nuls)
+        if (tk.t === 'o' && tk.v === 'cm' && j >= 6) {
+          const b = tokens[j-5]?.n ?? 0, c = tokens[j-4]?.n ?? 0;
+          if (Math.abs(b) > 0.05 || Math.abs(c) > 0.05) hasRot = true;
+        }
+        // opérateurs de dessin de texte
+        if (tk.t === 'o' && ['Tj', 'TJ', "'", '"'].includes(tk.v)) hasText = true;
+        j++;
+      }
+      if (lowOp || (removeRotated && hasRot && hasText)) {
+        i = j + 1; // ignorer tout le bloc q…Q
+      } else {
+        out.push(tokens[i]); // q
+        out.push(..._wmFilterTokens(tokens.slice(i + 1, j), lowOpGS, opts)); // récursif
+        if (j < tokens.length) out.push(tokens[j]); // Q
+        i = j + 1;
+      }
+    } else {
+      out.push(tokens[i++]);
+    }
+  }
+  return out;
+}
+
+// ── traitement principal ──────────────────────────────────────────────────────
+async function doRemoveWatermarks() {
+  if (!currentPdfDoc || !currentPdfData) return;
+
+  const btn  = document.getElementById('rmwm-btn');
+  const prg  = document.getElementById('rmwm-progress');
+  const res  = document.getElementById('rmwm-result');
+  btn.disabled = true;
+  prg.style.display = 'block';
+  res.style.display  = 'none';
+
+  const setP = (pct, txt) => {
+    document.getElementById('rmwm-bar').style.width = pct + '%';
+    document.getElementById('rmwm-progress-txt').textContent = txt;
+  };
+
+  const threshold    = parseFloat(document.getElementById('rmwm-threshold').value);
+  const removeRotated = document.getElementById('rmwm-rotated').checked;
+  const scope        = document.querySelector('input[name="rmwm-scope"]:checked')?.value || 'all';
+  const curPage      = parseInt(document.getElementById('cur-page')?.textContent) || 1;
+
+  try {
+    const { PDFDocument, PDFName, PDFRawStream, PDFArray, PDFNumber } = PDFLib;
+
+    setP(5, 'Chargement du document…');
+    const doc = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
+    const pageCount = doc.getPageCount();
+    const pageIndices = scope === 'current' ? [curPage - 1]
+      : Array.from({ length: pageCount }, (_, k) => k);
+
+    let totalRemoved = 0;
+
+    for (let idx = 0; idx < pageIndices.length; idx++) {
+      const pi = pageIndices[idx];
+      setP(10 + Math.round(idx / pageIndices.length * 82), `Analyse page ${pi + 1}/${pageCount}…`);
+
+      const page  = doc.getPage(pi);
+      const { node } = page;
+
+      // 1. Identifier les ExtGState à faible opacité
+      const lowOpGS = new Set();
+      try {
+        const rsrcVal = node.get(PDFName.of('Resources'));
+        const rsrc    = rsrcVal ? doc.context.lookup(rsrcVal) : null;
+        if (rsrc) {
+          const egVal = rsrc.get(PDFName.of('ExtGState'));
+          const eg    = egVal ? doc.context.lookup(egVal) : null;
+          if (eg?.entries) {
+            for (const [key, val] of eg.entries()) {
+              try {
+                const gs = doc.context.lookup(val);
+                const Ca = gs?.get?.(PDFName.of('Ca'));
+                const ca = gs?.get?.(PDFName.of('ca'));
+                const opacity = Ca?.asNumber?.() ?? ca?.asNumber?.();
+                if (opacity !== undefined && opacity < threshold) {
+                  // encodedName = '/GS1' → on retire le '/'
+                  const name = (key.encodedName ?? '').replace(/^\//, '')
+                    || key.decodeText?.() || String(key);
+                  lowOpGS.add(name);
+                }
+              } catch(_) {}
+            }
+          }
+        }
+      } catch(_) {}
+
+      // 2. Traiter chaque flux de contenu
+      const processRef = async (ref) => {
+        let stream;
+        try { stream = doc.context.lookup(ref); } catch(_) { return 0; }
+        if (!(stream instanceof PDFRawStream)) return 0;
+
+        const filterVal  = stream.dict.get(PDFName.of('Filter'));
+        const filterName = filterVal?.encodedName?.replace(/^\//, '')
+          ?? filterVal?.decodeText?.() ?? '';
+        // Ignorer si paramètre prédicteur présent (images)
+        if (stream.dict.get(PDFName.of('DecodeParms'))) return 0;
+
+        let bytes = stream.contents;
+        if (filterName === 'FlateDecode' || filterName === 'Fl') {
+          try { bytes = await _pdfInflate(bytes); } catch(_) { return 0; }
+        } else if (filterName && filterName !== '') {
+          return 0; // filtre non supporté, on ignore
+        }
+
+        const tokens    = _tokenizePdfCS(bytes);
+        const processed = _wmFilterTokens(tokens, lowOpGS, { removeRotated });
+        if (processed.length === tokens.length) return 0;
+
+        const removed    = tokens.length - processed.length;
+        const newText    = new TextEncoder().encode(processed.map(tk => tk.v).join(' '));
+        const compressed = await _pdfDeflate(newText);
+
+        // Créer un nouveau flux compressé
+        const newDict = doc.context.obj({
+          '/Filter': '/FlateDecode',
+          '/Length': compressed.length,
+        });
+        const newStream = PDFRawStream.of(newDict, compressed);
+        doc.context.assign(ref, newStream);
+        return removed;
+      };
+
+      try {
+        const ctVal   = node.get(PDFName.of('Contents'));
+        if (!ctVal) continue;
+        const ctObj   = doc.context.lookup(ctVal);
+        if (ctObj instanceof PDFRawStream) {
+          totalRemoved += await processRef(ctVal);
+        } else if (ctObj instanceof PDFArray) {
+          for (let si = 0; si < ctObj.size(); si++)
+            totalRemoved += await processRef(ctObj.get(si));
+        }
+      } catch(_) {}
+    }
+
+    setP(96, 'Sauvegarde…');
+    const newBytes = await doc.save();
+    const newB64   = bytesToBase64(newBytes);
+    setP(100, 'Terminé');
+
+    await renderPDFFromData({
+      name:     currentPdfName,
+      size:     Math.round(newBytes.length * 0.75),
+      data:     newB64,
+      filePath: currentFilePath,
+    }, true);
+
+    res.style.display = 'block';
+    if (totalRemoved > 0) {
+      res.style.background = 'rgba(46,204,113,.08)';
+      res.style.borderColor = 'rgba(46,204,113,.3)';
+      res.innerHTML = `<i class="fa-solid fa-circle-check" style="color:#2ecc71;margin-right:6px"></i>`
+        + `${totalRemoved} élément${totalRemoved > 1 ? 's' : ''} supprimé${totalRemoved > 1 ? 's' : ''} — filigranes retirés avec succès.`;
+    } else {
+      res.style.background = 'rgba(200,150,46,.08)';
+      res.style.borderColor = 'rgba(200,150,46,.3)';
+      res.innerHTML = `<i class="fa-solid fa-circle-info" style="color:var(--gold);margin-right:6px"></i>`
+        + `Aucun filigrane détecté avec ces paramètres. Essayez d'augmenter le seuil de transparence.`;
+    }
+
+    _logMod('Suppression filigranes',
+      scope === 'all' ? `toutes les pages` : `page ${curPage}`,
+      `seuil=${Math.round(threshold*100)}%`);
+
+  } catch(e) {
+    t('Erreur : ' + e.message);
+    console.error('[rmwm]', e);
+  } finally {
+    btn.disabled = false;
+    prg.style.display = 'none';
+  }
+}

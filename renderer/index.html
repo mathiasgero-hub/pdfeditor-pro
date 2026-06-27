@@ -144,6 +144,8 @@
           <div class="msep"></div>
           <div class="mdi" onclick="openHFPanel()"><i class="fa-solid fa-heading"></i>En-têtes &amp; Pieds de page</div>
           <div class="mdi" onclick="openWMPanel()"><i class="fa-solid fa-stamp"></i>Filigranes &amp; Tampons</div>
+          <div class="msep"></div>
+          <div class="mdi" onclick="openRemoveWMPanel()"><i class="fa-solid fa-eraser"></i>Supprimer les filigranes</div>
         </div>
       </div>
       <div class="mi">Révision
@@ -1734,6 +1736,55 @@
   </div>
 </div>
 
+
+<!-- ─ SUPPRESSION FILIGRANES ─ -->
+<div id="rmwm-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:11000;align-items:center;justify-content:center">
+  <div id="rmwm-panel">
+    <div class="fp-hdr">
+      <span><i class="fa-solid fa-eraser" style="color:var(--gold);margin-right:8px"></i>Suppression des filigranes</span>
+      <span onclick="closeRemoveWMPanel()" style="cursor:pointer;color:var(--txt2)"><i class="fa-solid fa-xmark"></i></span>
+    </div>
+    <div style="padding:18px 22px">
+      <div id="rmwm-page-info" style="margin-bottom:16px;padding:10px 14px;background:rgba(0,0,0,.2);border-radius:4px;font-size:.78rem;color:var(--txt2)"></div>
+      <div class="sum-section-title">Pages</div>
+      <div style="display:flex;gap:14px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.8rem">
+          <input type="radio" name="rmwm-scope" value="all" checked> Toutes les pages
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:.8rem">
+          <input type="radio" name="rmwm-scope" value="current"> Page courante seulement
+        </label>
+      </div>
+      <div class="sum-section-title">Détection</div>
+      <div style="margin-bottom:14px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font-size:.78rem;color:var(--txt2);min-width:170px">Seuil de transparence</span>
+          <input type="range" id="rmwm-threshold" min="0.05" max="0.95" step="0.05" value="0.6"
+            oninput="document.getElementById('rmwm-tval').textContent=Math.round(this.value*100)+'%'"
+            style="flex:1">
+          <span id="rmwm-tval" style="font-size:.78rem;color:var(--gold);min-width:36px;text-align:right">60%</span>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.8rem">
+          <input type="checkbox" id="rmwm-rotated" checked>
+          Supprimer textes en diagonale (CONFIDENTIEL, BROUILLON…)
+        </label>
+      </div>
+      <div id="rmwm-progress" style="display:none;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <i class="fa-solid fa-spinner fa-spin" style="color:var(--gold)"></i>
+          <span id="rmwm-progress-txt" style="font-size:.78rem;color:var(--txt2)">Traitement…</span>
+        </div>
+        <div style="height:4px;background:rgba(255,255,255,.1);border-radius:2px">
+          <div id="rmwm-bar" style="height:100%;width:0%;background:var(--gold);border-radius:2px;transition:width .3s"></div>
+        </div>
+      </div>
+      <div id="rmwm-result" style="display:none;padding:10px 14px;background:rgba(46,204,113,.08);border:1px solid rgba(46,204,113,.3);border-radius:4px;font-size:.78rem;margin-bottom:12px"></div>
+    </div>
+    <div class="fp-footer">
+      <div class="mbtn" onclick="closeRemoveWMPanel()">Fermer</div>
+      <div class="mbtn ok" id="rmwm-btn" onclick="doRemoveWatermarks()"><i class="fa-solid fa-eraser"></i> Supprimer</div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         
