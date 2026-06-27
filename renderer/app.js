@@ -9266,7 +9266,10 @@ async function doRemoveWatermarks() {
         if (processed.length === tokens.length) return 0;
 
         const removed    = tokens.length - processed.length;
-        const newText    = new TextEncoder().encode(processed.map(tk => tk.v).join(' '));
+        // Encodage latin-1 (pas UTF-8) pour préserver les bytes > 127 dans les chaînes PDF
+        const joined  = processed.map(tk => tk.v).join(' ');
+        const newText = new Uint8Array(joined.length);
+        for (let ci = 0; ci < joined.length; ci++) newText[ci] = joined.charCodeAt(ci) & 0xFF;
         const compressed = await _pdfDeflate(newText);
 
         // Créer un nouveau flux compressé
