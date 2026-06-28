@@ -501,6 +501,7 @@ let copiedPageBase64 = null;
 let selectedThumbPage  = 0;  // 1-based ; 0 = aucune (selection primaire)
 let selectedThumbPages = new Set(); // multi-selection (ensemble de numeros 1-based)
 let lastClickedThumb   = 0;  // pour le shift-click
+let _thumbGeneration   = 0;  // compteur de génération — annule les rendus précédents
 
 // ─── Dialogue "comment ouvrir" ────────────────────────────────────────────────
 let openChoiceResolve = null;
@@ -1959,6 +1960,9 @@ async function applyPageSize() {
 }
 
 async function renderThumbnails(pdf) {
+  // Incrémenter la génération : tout rendu précédent encore en cours sera ignoré
+  const generation = ++_thumbGeneration;
+
   const np          = pdf.numPages;
   const thContainer = document.getElementById('th-container');
   const thEmpty     = document.getElementById('th-empty');
@@ -1973,6 +1977,9 @@ async function renderThumbnails(pdf) {
   const THUMB_MAX_W = 130; // largeur max d'une vignette en pixels
 
   for (let i = 1; i <= np; i++) {
+    // Si une nouvelle session a démarré, abandonner ce rendu
+    if (_thumbGeneration !== generation) return;
+
     const page  = await pdf.getPage(i);
     const vp0   = page.getViewport({ scale: 1 });
     const scale = THUMB_MAX_W / vp0.width;
@@ -1982,6 +1989,7 @@ async function renderThumbnails(pdf) {
     canvas.width  = vp.width;
     canvas.height = vp.height;
     await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    if (_thumbGeneration !== generation) return; // vérifier après le rendu (opération longue)
 
     const img = document.createElement('img');
     img.src = canvas.toDataURL('image/jpeg', 0.75);
