@@ -191,7 +191,6 @@
           <div class="mdi" onclick="menuAction('saveAs')"><i class="fa-solid fa-floppy-disk"></i><span data-i18n="menu.save_as">Enregistrer sous…</span><span class="kbd">⇧⌘S</span></div>
           <div class="mdi" onclick="openModal('Exporter','PDF/A · PDF/X · Word · Excel · PowerPoint · HTML · PNG · JPEG')"><i class="fa-solid fa-file-export"></i><span data-i18n="menu.export">Exporter vers…</span></div>
           <div class="msep"></div>
-          <div class="mdi" onclick="openModal('Traitement par lots','Compression, conversion, protection, filigrane, OCR sur des dizaines de fichiers simultanément.')"><i class="fa-solid fa-layer-group"></i><span data-i18n="menu.batch">Traitement par lots</span></div>
           <div class="mdi" onclick="repairPDF()"><i class="fa-solid fa-screwdriver-wrench"></i><span data-i18n="menu.repair">Réparer un PDF corrompu</span></div>
           <div class="msep"></div>
           <div class="mdi" onclick="printCurrentPDF()"><i class="fa-solid fa-print"></i><span data-i18n="menu.print">Imprimer…</span><span class="kbd">⌘P</span></div>
@@ -336,7 +335,6 @@
   <div class="tb" data-tip="Compresser le fichier (–20% à –80%)" data-i18n-tip="tip.compress" onclick="openCompressPanel()"><i class="fa-solid fa-file-zipper"></i></div>
   <div class="tb" data-tip="Comparer deux versions du même document" data-i18n-tip="tip.compare" onclick="openComparePanel()"><i class="fa-solid fa-code-compare"></i></div>
   <div class="tb" data-tip="Résumé IA — analyse intelligente du document" data-i18n-tip="tip.summarize" onclick="t('Résumé IA…')"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
-  <div class="tb" data-tip="Traitement par lots — action sur plusieurs fichiers" data-i18n-tip="tip.batch" onclick="t('Lots…')"><i class="fa-solid fa-layer-group"></i></div>
   <div class="tb" data-tip="Mesurer distances, surfaces et angles" data-i18n-tip="tip.measure" onclick="setTool(this,'Mesures')"><i class="fa-solid fa-ruler"></i></div>
   <div class="tsep"></div>
   <span class="tgl" data-i18n="tgl.security">Sécurité</span>
@@ -393,6 +391,8 @@
       </div>
     </div>
   </aside>
+
+  <div class="resize-handle" id="resize-left"></div>
 
   <!-- Zone canvas -->
   <main id="canvas">
@@ -459,6 +459,8 @@
     </div><!-- #pdf-viewport -->
 
   </main>
+
+  <div class="resize-handle" id="resize-right"></div>
 
   <!-- Panneau droit -->
   <aside id="rp">

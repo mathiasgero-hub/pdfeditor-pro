@@ -597,7 +597,11 @@ function base64ToBytes(b64) {
 // ─── Systeme d'onglets ────────────────────────────────────────────────────────
 function makeTab(overrides) {
   return Object.assign({ id: tabIdCtr++, name: '', size: 0, data: null, filePath: null,
-    pdfDoc: null, baseFitScale: 1, zoomLevel: 100, renderGen: 0, bookmarks: [] }, overrides);
+    pdfDoc: null, baseFitScale: 1, zoomLevel: 100, renderGen: 0, bookmarks: [],
+    thumbCache: null,   // tableau de data URLs — vignettes pré-rendues
+    pagesNode: null,    // div détaché contenant les pages rendues
+    scrollTop: 0        // position de scroll sauvegardée
+  }, overrides);
 }
 
 function syncActiveTab() {
@@ -606,6 +610,14 @@ function syncActiveTab() {
   tab.pdfDoc = currentPdfDoc; tab.name = currentPdfName; tab.size = currentPdfSize;
   tab.data = currentPdfData; tab.filePath = currentFilePath;
   tab.baseFitScale = baseFitScale; tab.zoomLevel = zoomLevel; tab.renderGen = renderGen;
+  // Sauvegarder la position de scroll et détacher les pages du DOM
+  const pagesEl = document.getElementById('pdf-pages');
+  if (pagesEl) {
+    tab.scrollTop = pagesEl.scrollTop;
+    // Déplacer les pages dans le nœud détaché de l'onglet
+    if (!tab.pagesNode) tab.pagesNode = document.createElement('div');
+    while (pagesEl.firstChild) tab.pagesNode.appendChild(pagesEl.firstChild);
+  }
 }
 
 function setActiveTab(idx) {
@@ -639,13 +651,16 @@ async function switchTab(idx) {
   setActiveTab(idx);
   renderTabBar();
   selectedThumbPage = 0; selectedThumbPages = new Set();
-  // Re-render active tab content
-  const pagesEl = document.getElementById('pdf-pages');
+
+  const pagesEl    = document.getElementById('pdf-pages');
+  const thC        = document.getElementById('th-container');
+  const thE        = document.getElementById('th-empty');
+  const drop       = document.getElementById('drop-zone');
+  const pageOpsBar = document.getElementById('page-ops-bar');
+
   pagesEl.innerHTML = '';
-  const thC = document.getElementById('th-container');
   if (thC) thC.innerHTML = '';
-  const thE = document.getElementById('th-empty');
-  const drop = document.getElementById('drop-zone');
+
   if (!currentPdfDoc) {
     if (thE) thE.style.display = 'block';
     if (drop) drop.style.display = 'flex';
@@ -653,17 +668,38 @@ async function switchTab(idx) {
     document.getElementById('doc-pages').textContent = '—';
     document.getElementById('st-file').textContent = 'Aucun fichier ouvert';
     document.getElementById('zoom-val').textContent = '100%';
-    document.getElementById('page-ops-bar').style.display = 'none';
+    if (pageOpsBar) pageOpsBar.style.display = 'none';
     return;
   }
+
   if (thE) thE.style.display = 'none';
   if (drop) drop.style.display = 'none';
+  if (pageOpsBar) pageOpsBar.style.display = 'none';
   document.getElementById('zoom-val').textContent = zoomLevel + '%';
-  await renderMainPages(currentPdfDoc, baseFitScale * zoomLevel / 100, null, null);
-  await renderThumbnails(currentPdfDoc);
   document.getElementById('doc-name').textContent = currentPdfName;
   document.getElementById('doc-pages').textContent = currentPdfDoc.numPages;
   document.getElementById('st-file').textContent = currentPdfName;
+
+  const newTab = tabs[idx];
+
+  // ── Vignettes : recréation instantanée depuis le cache d'images ──────────────
+  if (newTab.thumbCache && newTab.thumbCache.length > 0) {
+    restoreThumbsFromCache(newTab.thumbCache, newTab.pdfDoc);
+  } else {
+    await renderThumbnails(currentPdfDoc);
+  }
+
+  // ── Pages principales : restaurer depuis le nœud détaché ou re-rendre ────────
+  if (newTab.pagesNode && newTab.pagesNode.children.length > 0) {
+    // Réattacher instantanément (aucun re-décodage PDF)
+    pagesEl.style.display = 'flex';
+    pagesEl.style.position = 'relative';
+    while (newTab.pagesNode.firstChild) pagesEl.appendChild(newTab.pagesNode.firstChild);
+    pagesEl.scrollTop = newTab.scrollTop || 0;
+  } else {
+    await renderMainPages(currentPdfDoc, baseFitScale * zoomLevel / 100, null, null);
+  }
+
   renderBookmarkPanel();
 }
 
@@ -1006,6 +1042,11 @@ async function renderPDFFromData({ name, size, data, filePath = null }, pushUndo
   }
   // Si aucun onglet actif, en creer un
   if (activeTabIdx < 0) { tabs.push(makeTab()); activeTabIdx = 0; }
+  // Invalider le cache de l'onglet actif (nouveau contenu ou modification)
+  if (tabs[activeTabIdx]) {
+    tabs[activeTabIdx].thumbCache = null;
+    tabs[activeTabIdx].pagesNode  = null;
+  }
   document.getElementById('drop-zone').style.display = 'none';
   const loadBar   = document.getElementById('load-bar');
   const loadInner = document.getElementById('load-inner');
@@ -1151,7 +1192,7 @@ async function renderMainPages(pdf, scale, loadInner, loadLabel) {
 
     // Numero de page
     const num = document.createElement('div');
-    num.style.cssText = "text-align:center;font-family:'Cinzel',serif;font-size:.6rem;color:rgba(237,229,205,.5);margin-top:6px;letter-spacing:.1em";
+    num.style.cssText = "text-align:center;font-family:'Cinzel',serif;font-size:.6rem;color:#1a1a1a;background:rgba(237,229,205,.75);margin-top:6px;padding:3px 0;letter-spacing:.1em";
     num.textContent = 'Page ' + i + ' / ' + np;
     wrap.appendChild(num);
 
@@ -1974,7 +2015,7 @@ async function renderThumbnails(pdf) {
   if (pageOpsBar) pageOpsBar.style.display = 'none';
   // selectedThumbPages est conservé (pas réinitialisé) pour restaurer la sélection après re-render
 
-  const THUMB_MAX_W = 130; // largeur max d'une vignette en pixels
+  const THUMB_MAX_W = 260; // largeur de rendu en pixels (2× pour une netteté optimale)
 
   for (let i = 1; i <= np; i++) {
     // Si une nouvelle session a démarré, abandonner ce rendu
@@ -1992,7 +2033,7 @@ async function renderThumbnails(pdf) {
     if (_thumbGeneration !== generation) return; // vérifier après le rendu (opération longue)
 
     const img = document.createElement('img');
-    img.src = canvas.toDataURL('image/jpeg', 0.75);
+    img.src = canvas.toDataURL('image/jpeg', 0.92);
     img.style.cssText = 'width:100%;height:100%;object-fit:contain;display:block';
 
     const thc = document.createElement('div');
@@ -2056,6 +2097,84 @@ async function renderThumbnails(pdf) {
     });
   }
   // Restaurer la sélection multiple après re-render
+  if (selectedThumbPages.size > 0) {
+    updateThumbSelection();
+    updatePageOpsBar();
+  }
+
+  // Sauvegarder les images dans le cache de l'onglet actif
+  if (activeTabIdx >= 0 && tabs[activeTabIdx] && _thumbGeneration === generation) {
+    const imgs = document.querySelectorAll('#th-container .thc img');
+    tabs[activeTabIdx].thumbCache = Array.from(imgs).map(img => img.src);
+  }
+}
+
+// ── Restauration rapide des vignettes depuis le cache d'images ────────────────
+function restoreThumbsFromCache(thumbCache, pdf) {
+  const thContainer = document.getElementById('th-container');
+  if (!thContainer) return;
+  thContainer.innerHTML = '';
+  const np = thumbCache.length;
+  for (let i = 0; i < np; i++) {
+    const pageNum = i + 1;
+    const img = document.createElement('img');
+    img.src = thumbCache[i];
+    img.style.cssText = 'width:100%;height:100%;object-fit:contain;display:block';
+
+    const thc = document.createElement('div');
+    thc.className = 'thc';
+    thc.style.cssText = 'padding:0;overflow:hidden';
+    thc.appendChild(img);
+
+    const th = document.createElement('div');
+    th.className = 'th' + (pageNum === 1 ? ' act' : '');
+    th.style.cursor = 'pointer';
+    th.appendChild(thc);
+
+    const thn = document.createElement('div');
+    thn.className = 'thn';
+    thn.textContent = pageNum;
+
+    const delBtn = document.createElement('div');
+    delBtn.className = 'th-del';
+    delBtn.title = 'Supprimer cette page';
+    delBtn.innerHTML = '✕';
+    delBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const confirmed = await confirmDeletePage(pageNum);
+      if (confirmed) await deletePage(pageNum);
+    });
+
+    const tw = document.createElement('div');
+    tw.className = 'tw';
+    tw.appendChild(delBtn);
+    tw.appendChild(th);
+    tw.appendChild(thn);
+    thContainer.appendChild(tw);
+
+    th.addEventListener('click', (e) => {
+      if (e.shiftKey && lastClickedThumb > 0) {
+        const lo = Math.min(lastClickedThumb, pageNum);
+        const hi = Math.max(lastClickedThumb, pageNum);
+        if (!e.ctrlKey && !e.metaKey) selectedThumbPages = new Set();
+        for (let p = lo; p <= hi; p++) selectedThumbPages.add(p);
+      } else if (e.ctrlKey || e.metaKey) {
+        if (selectedThumbPages.has(pageNum)) selectedThumbPages.delete(pageNum);
+        else selectedThumbPages.add(pageNum);
+        lastClickedThumb = pageNum;
+      } else {
+        selectedThumbPages = new Set([pageNum]);
+        lastClickedThumb = pageNum;
+      }
+      selectedThumbPage = pageNum;
+      document.querySelectorAll('.th').forEach(el => el.classList.remove('act'));
+      th.classList.add('act');
+      document.getElementById('cur-page').textContent = pageNum;
+      if (selectedThumbPages.size === 1) scrollToPage(pageNum);
+      updateThumbSelection();
+      updatePageOpsBar();
+    });
+  }
   if (selectedThumbPages.size > 0) {
     updateThumbSelection();
     updatePageOpsBar();
@@ -3506,6 +3625,53 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.electronAPI?.rendererReady) window.electronAPI.rendererReady();
 });
 
+// ── Redimensionnement des panneaux latéraux ───────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const MIN_W = 120, MAX_W = 520;
+
+  function initResizeHandle(handleId, panelId, side) {
+    const handle = document.getElementById(handleId);
+    const panel  = document.getElementById(panelId);
+    if (!handle || !panel) return;
+
+    // Restaurer la largeur sauvegardée
+    const saved = localStorage.getItem('panel-w-' + panelId);
+    if (saved) panel.style.width = saved + 'px';
+
+    let startX, startW;
+
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      startX = e.clientX;
+      startW = panel.offsetWidth;
+      handle.classList.add('rh-active');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+
+      function onMove(e) {
+        const dx   = side === 'left' ? e.clientX - startX : startX - e.clientX;
+        const newW = Math.min(MAX_W, Math.max(MIN_W, startW + dx));
+        panel.style.width = newW + 'px';
+      }
+
+      function onUp() {
+        handle.classList.remove('rh-active');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        localStorage.setItem('panel-w-' + panelId, panel.offsetWidth);
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      }
+
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+
+  initResizeHandle('resize-left',  'lp', 'left');
+  initResizeHandle('resize-right', 'rp', 'right');
+});
+
 // ── Glisser-déposer d'image externe sur une page PDF ─────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   const pagesEl = document.getElementById('pdf-pages');
@@ -3712,12 +3878,14 @@ function _createPasteOverlay(wrap, b64, lx, ly, initW, initH, pdfW, pdfH) {
   wrap.appendChild(div);
   pasteOverlay = div;
 
-  // 4 poignées de redimensionnement dans wrap
-  const BASE_PH = 'position:absolute;width:14px;height:14px;background:#c9a84c;border:2px solid #fff;border-radius:3px;z-index:502;box-sizing:border-box;';
+  // 8 poignées de redimensionnement : 4 coins + 4 bords
+  const BASE_PH_CORNER = 'position:absolute;width:14px;height:14px;background:#c9a84c;border:2px solid #fff;border-radius:3px;z-index:502;box-sizing:border-box;';
+  const BASE_PH_EDGE   = 'position:absolute;background:#c9a84c;border:2px solid #fff;border-radius:3px;z-index:502;box-sizing:border-box;';
   pasteHandles = {};
+  // Coins (redimensionnement libre H+V)
   ['nw','ne','sw','se'].forEach(dir => {
     const h = document.createElement('div');
-    h.style.cssText = BASE_PH + 'cursor:' + dir + '-resize;';
+    h.style.cssText = BASE_PH_CORNER + 'cursor:' + dir + '-resize;';
     h.dataset.dir = dir;
     h.addEventListener('mousedown', e => {
       pasteOverlayRS = true;
@@ -3727,21 +3895,41 @@ function _createPasteOverlay(wrap, b64, lx, ly, initW, initH, pdfW, pdfH) {
     wrap.appendChild(h);
     pasteHandles[dir] = h;
   });
+  // Bords (redimensionnement axe unique)
+  [['n','ns-resize','20px','8px'],['s','ns-resize','20px','8px'],['e','ew-resize','8px','20px'],['w','ew-resize','8px','20px']].forEach(([dir, cursor, w, h]) => {
+    const el = document.createElement('div');
+    el.style.cssText = BASE_PH_EDGE + 'cursor:' + cursor + ';width:' + w + ';height:' + h + ';';
+    el.dataset.dir = dir;
+    el.addEventListener('mousedown', e => {
+      pasteOverlayRS = true;
+      pasteOverlayRSStart = { x: e.clientX, y: e.clientY, w: div.offsetWidth, h: div.offsetHeight, l: parseInt(div.style.left)||0, t: parseInt(div.style.top)||0, dir };
+      e.preventDefault(); e.stopPropagation();
+    });
+    wrap.appendChild(el);
+    pasteHandles[dir] = el;
+  });
   updatePasteHandles();
   t('Déplacez et redimensionnez, puis cliquez ✓');
 }
 
 function updatePasteHandles() {
   if (!pasteOverlay || !pasteHandles) return;
-  const l = parseInt(pasteOverlay.style.left) || 0;
-  const t = parseInt(pasteOverlay.style.top)  || 0;
-  const w = pasteOverlay.offsetWidth;
-  const h = pasteOverlay.offsetHeight;
-  const hs = 7;
-  pasteHandles.nw.style.left = (l - hs) + 'px'; pasteHandles.nw.style.top = (t - hs) + 'px';
-  pasteHandles.ne.style.left = (l + w - hs) + 'px'; pasteHandles.ne.style.top = (t - hs) + 'px';
-  pasteHandles.sw.style.left = (l - hs) + 'px'; pasteHandles.sw.style.top = (t + h - hs) + 'px';
-  pasteHandles.se.style.left = (l + w - hs) + 'px'; pasteHandles.se.style.top = (t + h - hs) + 'px';
+  const l  = parseInt(pasteOverlay.style.left) || 0;
+  const t  = parseInt(pasteOverlay.style.top)  || 0;
+  const w  = pasteOverlay.offsetWidth;
+  const h  = pasteOverlay.offsetHeight;
+  const hs = 7; // demi-taille poignée coin (14px)
+  const he = 4; // demi-épaisseur poignée bord (8px)
+  // Coins
+  pasteHandles.nw.style.left = (l - hs) + 'px';      pasteHandles.nw.style.top = (t - hs) + 'px';
+  pasteHandles.ne.style.left = (l + w - hs) + 'px';  pasteHandles.ne.style.top = (t - hs) + 'px';
+  pasteHandles.sw.style.left = (l - hs) + 'px';      pasteHandles.sw.style.top = (t + h - hs) + 'px';
+  pasteHandles.se.style.left = (l + w - hs) + 'px';  pasteHandles.se.style.top = (t + h - hs) + 'px';
+  // Bords (milieu de chaque côté)
+  pasteHandles.n.style.left  = (l + w/2 - 10) + 'px'; pasteHandles.n.style.top  = (t - he) + 'px';
+  pasteHandles.s.style.left  = (l + w/2 - 10) + 'px'; pasteHandles.s.style.top  = (t + h - he) + 'px';
+  pasteHandles.e.style.left  = (l + w - he) + 'px';   pasteHandles.e.style.top  = (t + h/2 - 10) + 'px';
+  pasteHandles.w.style.left  = (l - he) + 'px';        pasteHandles.w.style.top  = (t + h/2 - 10) + 'px';
 }
 
 document.addEventListener('mousemove', e => {
@@ -3754,13 +3942,19 @@ document.addEventListener('mousemove', e => {
     const s = pasteOverlayRSStart;
     const dx = e.clientX - s.x, dy = e.clientY - s.y;
     let nw = s.w, nh = s.h, nl = s.l, nt = s.t;
+    const isCorner = ['nw','ne','sw','se'].includes(s.dir);
     if      (s.dir === 'se') { nw = s.w + dx; nh = s.h + dy; }
     else if (s.dir === 'sw') { nw = s.w - dx; nl = s.l + dx; nh = s.h + dy; }
     else if (s.dir === 'ne') { nw = s.w + dx; nh = s.h - dy; nt = s.t + dy; }
     else if (s.dir === 'nw') { nw = s.w - dx; nl = s.l + dx; nh = s.h - dy; nt = s.t + dy; }
+    // Bords : un seul axe
+    else if (s.dir === 'e')  { nw = s.w + dx; }
+    else if (s.dir === 'w')  { nw = s.w - dx; nl = s.l + dx; }
+    else if (s.dir === 's')  { nh = s.h + dy; }
+    else if (s.dir === 'n')  { nh = s.h - dy; nt = s.t + dy; }
     nw = Math.max(20, nw);
-    // Verrouillage proportions : ajuste la dimension secondaire selon la direction
-    if (pasteAspectLocked) {
+    // Verrouillage proportions : uniquement pour les coins
+    if (pasteAspectLocked && isCorner) {
       const useW = s.dir === 'ne' || s.dir === 'se' || (Math.abs(dx) >= Math.abs(dy));
       if (useW) { nh = nw / pasteAspectRatio; if (s.dir === 'ne') nt = s.t + s.h - nh; }
       else       { nw = nh * pasteAspectRatio; if (s.dir === 'nw') nl = s.l + s.w - nw; }
@@ -10250,11 +10444,18 @@ async function _wmRemoveScanned(pageIndices, setP, smartFill = false) {
   const TOL  = 30;
 
   setP(5, 'Chargement…');
-  const newDoc = await PDFDocument.create();
+
+  // Charger le document original (pour copier les pages non traitées)
+  const originalDoc = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
+  const totalPages  = originalDoc.getPageCount();
+
+  // Traiter d'abord les pages cibles → stocker les images résultantes
+  const processedMap = {}; // index de page → { pngBytes, pgW, pgH }
+  const targetSet    = new Set(pageIndices);
 
   for (let idx = 0; idx < pageIndices.length; idx++) {
     const pi = pageIndices[idx];
-    setP(10 + Math.round(idx / pageIndices.length * 82), `Traitement page ${pi + 1}…`);
+    setP(10 + Math.round(idx / pageIndices.length * 80), `Traitement page ${pi + 1}…`);
 
     const pdfPage = await currentPdfDoc.getPage(pi + 1);
     const viewport = pdfPage.getViewport({ scale: 2.0 });
@@ -10270,13 +10471,11 @@ async function _wmRemoveScanned(pageIndices, setP, smartFill = false) {
     const mask = _wmBuildMask(d, W, H, gMin, gMax, TOL);
 
     if (!smartFill) {
-      // Remplissage blanc simple
       for (let i = 0; i < W * H; i++) {
         if (!mask[i]) continue;
         d[i*4] = d[i*4+1] = d[i*4+2] = 255;
       }
     } else {
-      // Remplissage couleur locale : snapshot puis voisins immédiats non-masqués
       const NX = [-1,1,0,0,-2,2,0,0,-1,-1,1,1];
       const NY = [0,0,-1,1,0,0,-2,2,-1,1,-1,1];
       const orig = new Uint8ClampedArray(d);
@@ -10296,22 +10495,37 @@ async function _wmRemoveScanned(pageIndices, setP, smartFill = false) {
           if (cnt > 0) {
             d[i] = Math.round(rS/cnt); d[i+1] = Math.round(gS/cnt); d[i+2] = Math.round(bS/cnt);
           } else {
-            d[i] = d[i+1] = d[i+2] = 255; // repli blanc si aucun voisin
+            d[i] = d[i+1] = d[i+2] = 255;
           }
         }
       }
     }
     ctx.putImageData(imgData, 0, 0);
 
-    const pngB64 = canvas.toDataURL('image/png').split(',')[1];
-    const pngBytes = _b64ToU8(pngB64);
-    const img = await newDoc.embedPng(pngBytes);
-    const [pgW, pgH] = [viewport.width / 2, viewport.height / 2];
-    const newPage = newDoc.addPage([pgW, pgH]);
-    newPage.drawImage(img, { x: 0, y: 0, width: pgW, height: pgH });
+    const pngB64   = canvas.toDataURL('image/png').split(',')[1];
+    processedMap[pi] = { pngBytes: _b64ToU8(pngB64), pgW: viewport.width / 2, pgH: viewport.height / 2 };
   }
 
-  setP(95, 'Sauvegarde…');
+  // Construire le document final : toutes les pages originales,
+  // en remplaçant uniquement celles qui ont été traitées
+  setP(92, 'Assemblage du document…');
+  const newDoc = await PDFDocument.create();
+
+  for (let i = 0; i < totalPages; i++) {
+    if (processedMap[i]) {
+      // Page traitée : insérer l'image nettoyée
+      const { pngBytes, pgW, pgH } = processedMap[i];
+      const img     = await newDoc.embedPng(pngBytes);
+      const newPage = newDoc.addPage([pgW, pgH]);
+      newPage.drawImage(img, { x: 0, y: 0, width: pgW, height: pgH });
+    } else {
+      // Page non traitée : copier telle quelle depuis le document original
+      const [copied] = await newDoc.copyPages(originalDoc, [i]);
+      newDoc.addPage(copied);
+    }
+  }
+
+  setP(97, 'Sauvegarde…');
   const newBytes = await newDoc.save();
   setP(100, 'Terminé');
   return newBytes;

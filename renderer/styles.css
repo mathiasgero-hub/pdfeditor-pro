@@ -178,8 +178,24 @@ body{
 /* ─── MAIN ─── */
 #main{display:flex;flex:1;overflow:hidden}
 
+/* ─── POIGNÉES DE REDIMENSIONNEMENT ─── */
+.resize-handle{
+  width:5px;flex-shrink:0;cursor:col-resize;
+  background:var(--gold-border);
+  position:relative;z-index:20;
+  transition:background .15s;
+  user-select:none;
+}
+.resize-handle::after{
+  content:'';position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  width:1px;height:32px;
+  background:var(--gold-l);opacity:.35;border-radius:1px;
+}
+.resize-handle:hover,.resize-handle.rh-active{background:var(--gold);cursor:col-resize}
+
 /* ─── PANNEAU GAUCHE ─── */
-#lp{width:210px;background:var(--bg-sidebar);border-right:1px solid var(--gold-border);display:flex;flex-direction:column;flex-shrink:0}
+#lp{width:210px;background:var(--bg-sidebar);border-right:none;display:flex;flex-direction:column;flex-shrink:0}
 .ptabs{display:flex;border-bottom:1px solid var(--gold-border)}
 .pt{
   flex:1;padding:7px 3px;
@@ -255,7 +271,7 @@ body{
 #load-label{font-family:'Cinzel',serif;font-size:.6rem;color:var(--txt2);text-align:center;margin-bottom:5px;letter-spacing:.1em}
 
 /* ─── PANNEAU DROIT ─── */
-#rp{width:235px;background:var(--bg-panel);border-left:1px solid var(--gold-border);display:flex;flex-direction:column;flex-shrink:0}
+#rp{width:235px;background:var(--bg-panel);border-left:none;display:flex;flex-direction:column;flex-shrink:0}
 .rpc{flex:1;overflow-y:auto}
 .rps{border-bottom:1px solid var(--gold-border);padding:11px 12px}
 .rst{font-family:'Cinzel',serif;font-size:.58rem;letter-spacing:.15em;text-transform:uppercase;color:var(--gold);margin-bottom:9px}
