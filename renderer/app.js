@@ -693,7 +693,6 @@ async function switchTab(idx) {
   if (newTab.pagesNode && newTab.pagesNode.children.length > 0) {
     // Réattacher instantanément (aucun re-décodage PDF)
     pagesEl.style.display = 'flex';
-    pagesEl.style.position = 'relative';
     while (newTab.pagesNode.firstChild) pagesEl.appendChild(newTab.pagesNode.firstChild);
     pagesEl.scrollTop = newTab.scrollTop || 0;
   } else {
@@ -1160,12 +1159,15 @@ async function renderMainPages(pdf, scale, loadInner, loadLabel) {
   }
 
   // Masquer le contenu pendant le rendu pour éviter les sauts visuels
+  // Le try/finally garantit que l'opacité est toujours restaurée,
+  // même si le render est annulé en cours de route (zoom rapide, changement d'onglet…)
   canvasEl.style.opacity = '0';
   canvasEl.style.pointerEvents = 'none';
 
+  try {
+
   pagesEl.innerHTML = '';
   pagesEl.style.display = 'flex';
-  pagesEl.style.position = 'relative';  // coordinate anchor for selection rect
 
   for (let i = 1; i <= np; i++) {
     if (gen !== renderGen) return; // render annule par un zoom plus recent
@@ -1296,11 +1298,14 @@ async function renderMainPages(pdf, scale, loadInner, loadLabel) {
       canvasEl.scrollTop = Math.max(0, newScrollTop);
     }
   }
-  // Laisser le navigateur appliquer le scrollTop avant de révéler
-  requestAnimationFrame(() => {
-    canvasEl.style.opacity = '';
-    canvasEl.style.pointerEvents = '';
-  });
+
+  } finally {
+    // Toujours révéler le contenu — que le render soit complet ou annulé
+    requestAnimationFrame(() => {
+      canvasEl.style.opacity = '';
+      canvasEl.style.pointerEvents = '';
+    });
+  }
 }
 
 // ─── Rendu des vignettes (effectue une seule fois au chargement) ──────────────
@@ -2003,6 +2008,7 @@ async function applyPageSize() {
 async function renderThumbnails(pdf) {
   // Incrémenter la génération : tout rendu précédent encore en cours sera ignoré
   const generation = ++_thumbGeneration;
+  const tabIdx = activeTabIdx; // capturer l'onglet actif au DEBUT — peut changer pendant le rendu async
 
   const np          = pdf.numPages;
   const thContainer = document.getElementById('th-container');
@@ -2102,10 +2108,11 @@ async function renderThumbnails(pdf) {
     updatePageOpsBar();
   }
 
-  // Sauvegarder les images dans le cache de l'onglet actif
-  if (activeTabIdx >= 0 && tabs[activeTabIdx] && _thumbGeneration === generation) {
+  // Sauvegarder les images dans le cache de l'onglet qui a DEMARRE ce rendu
+  // (tabIdx capturé au début, car activeTabIdx peut avoir changé pendant le rendu async)
+  if (tabIdx >= 0 && tabs[tabIdx] && _thumbGeneration === generation) {
     const imgs = document.querySelectorAll('#th-container .thc img');
-    tabs[activeTabIdx].thumbCache = Array.from(imgs).map(img => img.src);
+    tabs[tabIdx].thumbCache = Array.from(imgs).map(img => img.src);
   }
 }
 
