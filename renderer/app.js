@@ -493,6 +493,7 @@ let currentFilePath = null;
 let baseFitScale    = 1;
 let zoomLevel       = 100;
 let renderGen       = 0;
+let _lastScrollAnchor = null; // dernière ancre connue, réutilisée si le DOM est déjà vidé
 
 // ─── Presse-papiers interne (copie de page) ──────────────────────────────────
 let copiedPageBase64 = null;
@@ -1046,6 +1047,7 @@ async function renderPDFFromData({ name, size, data, filePath = null }, pushUndo
     tabs[activeTabIdx].thumbCache = null;
     tabs[activeTabIdx].pagesNode  = null;
   }
+  _lastScrollAnchor = null; // réinitialiser l'ancre de scroll pour le nouveau document
   document.getElementById('drop-zone').style.display = 'none';
   const loadBar   = document.getElementById('load-bar');
   const loadInner = document.getElementById('load-inner');
@@ -1135,6 +1137,8 @@ async function renderMainPages(pdf, scale, loadInner, loadLabel) {
   const pagesEl = document.getElementById('pdf-pages');
 
   // Sauvegarder l'ancre de scroll : page visible au centre + position relative dans cette page
+  // Si le DOM a déjà été vidé par un render concurrent (zoom rapide), réutiliser la dernière
+  // ancre connue pour éviter de remonter en haut du document.
   const canvasEl = document.getElementById('pdf-viewport');
   let scrollAnchor = null;
   const existingWraps = Array.from(document.querySelectorAll('.page-wrap'));
@@ -1151,11 +1155,14 @@ async function renderMainPages(pdf, scale, loadInner, loadLabel) {
         break;
       }
     }
-    if (!scrollAnchor && existingWraps.length) {
-      // fallback : première page visible
-      const w = existingWraps[0];
+    if (!scrollAnchor) {
+      // fallback : première page visible dans le DOM
       scrollAnchor = { pageIdx: 0, fracInPage: 0 };
     }
+    _lastScrollAnchor = scrollAnchor; // mémoriser pour les renders suivants
+  } else if (_lastScrollAnchor) {
+    // DOM déjà vidé par un render précédent (zoom rapide) → réutiliser la dernière ancre
+    scrollAnchor = _lastScrollAnchor;
   }
 
   // Masquer le contenu pendant le rendu pour éviter les sauts visuels
@@ -2224,14 +2231,15 @@ document.getElementById('canvas').addEventListener('drop', async e => {
 // ─── Zoom : re-render PDF.js a la bonne resolution ────────────────────────────
 // Ancienne approche (CSS zoom) : agrandissait des pixels → flou.
 // Nouvelle approche : PDF.js re-calcule les pages a l'echelle exacte → net.
-function zoom(dir) {
-  zoomLevel = Math.min(300, Math.max(40, zoomLevel + dir * 20));
+function zoomTo(val) {
+  zoomLevel = Math.min(300, Math.max(40, Math.round(val)));
   document.getElementById('zoom-val').textContent = zoomLevel + '%';
+  if (tabs[activeTabIdx]) tabs[activeTabIdx].zoomLevel = zoomLevel;
   if (currentPdfDoc) {
-    const newScale = baseFitScale * (zoomLevel / 100);
-    renderMainPages(currentPdfDoc, newScale, null, null);
+    renderMainPages(currentPdfDoc, baseFitScale * zoomLevel / 100, null, null);
   }
 }
+function zoom(dir) { zoomTo(zoomLevel + dir * 20); }
 
 // ─── Vue : Adapter / Page double / Plein écran ───────────────────────────────
 
@@ -3176,6 +3184,54 @@ function clearSelection() {
   document.getElementById('btn-sel-paste')?.classList.remove('on');
 }
 
+// ─── Dialogue de périmètre de recadrage ──────────────────────────────────────
+// Retourne 'current' | 'all' | null (annulé)
+function askCropScope(pageIdx, totalPages) {
+  return new Promise(resolve => {
+    const ov  = document.createElement('div');
+    const box = document.createElement('div');
+    ov.style.cssText  = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20000;display:flex;align-items:center;justify-content:center;';
+    box.style.cssText = 'background:var(--bg-panel);border:1px solid var(--gold);border-top:3px solid var(--gold);border-radius:6px;padding:24px 28px;min-width:320px;text-align:center';
+
+    const title = document.createElement('div');
+    title.style.cssText = 'font-family:Cinzel,serif;color:var(--gold);margin-bottom:8px;font-size:.9rem';
+    title.innerHTML = '<i class="fa-solid fa-crop-simple"></i> Recadrage';
+
+    const sub = document.createElement('div');
+    sub.style.cssText = 'color:var(--txt2);font-size:.8rem;margin-bottom:18px';
+    sub.textContent = 'Appliquer la sélection à…';
+
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+
+    const btnCurrent = document.createElement('div');
+    btnCurrent.className = 'mbtn';
+    btnCurrent.innerHTML = '<i class="fa-solid fa-file"></i> Page ' + pageIdx + ' uniquement';
+
+    const btnAll = document.createElement('div');
+    btnAll.className = 'mbtn';
+    btnAll.innerHTML = '<i class="fa-solid fa-copy"></i> Toutes les pages (' + totalPages + ')';
+    btnAll.style.cssText = 'background:var(--gold);color:#1a1209;border-color:var(--gold)';
+
+    const btnCancel = document.createElement('div');
+    btnCancel.className = 'mbtn';
+    btnCancel.textContent = 'Annuler';
+    btnCancel.style.cssText = 'opacity:.7';
+
+    const close = v => { ov.remove(); resolve(v); };
+    btnCurrent.addEventListener('click', () => close('current'));
+    btnAll    .addEventListener('click', () => close('all'));
+    btnCancel .addEventListener('click', () => close(null));
+    ov.addEventListener('keydown', e => { if (e.key === 'Escape') close(null); });
+
+    row.appendChild(btnCurrent); row.appendChild(btnAll); row.appendChild(btnCancel);
+    box.appendChild(title); box.appendChild(sub); box.appendChild(row);
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+    ov.tabIndex = -1; ov.focus();
+  });
+}
+
 // ─── Recadrage de page ────────────────────────────────────────────────────────
 async function selCrop() {
   if (!currentSel || !currentPdfData) return;
@@ -3183,20 +3239,41 @@ async function selCrop() {
   const { pageIdx, pdfX, pdfY, pdfW, pdfH } = currentSel;
   if (pdfW < 4 || pdfH < 4) { t('Sélection trop petite pour recadrer.'); return; }
 
+  const doc = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
+  const totalPages = doc.getPageCount();
+
+  // Demander le périmètre si le document a plusieurs pages
+  let scope = 'current';
+  if (totalPages > 1) {
+    scope = await askCropScope(pageIdx, totalPages);
+    if (!scope) return; // annulé
+  }
+
   try {
-    const doc  = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
-    const page = doc.getPage(pageIdx - 1);
-    const { height: pgH } = page.getSize();
+    // Dimensions de la page de référence (pour le calcul des ratios)
+    const refPage = doc.getPage(pageIdx - 1);
+    const { width: refW, height: refH } = refPage.getSize();
 
-    // PDF : axe Y depuis le bas — convertir depuis le haut (coordonnées écran)
-    const boxX = pdfX;
-    const boxY = pgH - pdfY - pdfH;
-    const boxW = pdfW;
-    const boxH = pdfH;
+    // Ratios de recadrage relatifs à la page de référence (Y : axe PDF = bas)
+    const ratioX1 = pdfX / refW;                        // bord gauche
+    const ratioY1 = (refH - pdfY - pdfH) / refH;        // bord bas (PDF)
+    const ratioX2 = (pdfX + pdfW) / refW;               // bord droit
+    const ratioY2 = (refH - pdfY) / refH;               // bord haut (PDF)
 
-    // Définir MediaBox et CropBox à la sélection
-    page.setMediaBox(boxX, boxY, boxW, boxH);
-    page.setCropBox (boxX, boxY, boxW, boxH);
+    const targets = scope === 'all'
+      ? Array.from({ length: totalPages }, (_, i) => i)
+      : [pageIdx - 1];
+
+    for (const i of targets) {
+      const page = doc.getPage(i);
+      const { width: pgW, height: pgH } = page.getSize();
+      const boxX = ratioX1 * pgW;
+      const boxY = ratioY1 * pgH;
+      const boxW = (ratioX2 - ratioX1) * pgW;
+      const boxH = (ratioY2 - ratioY1) * pgH;
+      page.setMediaBox(boxX, boxY, boxW, boxH);
+      page.setCropBox (boxX, boxY, boxW, boxH);
+    }
 
     const newBytes = await doc.save();
     const newB64   = bytesToBase64(newBytes);
@@ -3205,7 +3282,7 @@ async function selCrop() {
       name: currentPdfName, size: newBytes.length,
       data: newB64, filePath: currentFilePath,
     }, true);
-    t('Page recadrée.');
+    t(scope === 'all' ? 'Toutes les pages recadrées.' : 'Page recadrée.');
   } catch(e) {
     console.error('[crop]', e);
     t('Erreur recadrage : ' + e.message);
@@ -4632,10 +4709,12 @@ let penMode      = 'free';        // 'free' | 'line'
 let shapeType    = 'rect';        // 'rect' | 'ellipse' | 'line' | 'arrow' | 'fill' | 'strike'
 let noteBg       = '#FFFF8D';
 let noteClr      = '#1a1a1a';
-let drawOverlay  = null;          // canvas courant
+let drawOverlay  = null;          // canvas courant (peut changer au survol d'une autre page)
 let drawWrap     = null;          // page-wrap courant
 let drawIsDown   = false;
 let drawStart    = null;          // {x, y} début
+let _drawGestureOv   = null;     // overlay capturé au mousedown — stable pour toute la gesture
+let _drawGestureWrap = null;     // wrap capturé au mousedown
 let drawPts      = [];            // points main-levée ou sommets de ligne
 let penLinePts   = [];            // sommets lignes connectées
 let noteOverlay  = null;          // div post-it courant
@@ -4747,8 +4826,11 @@ function showDrawToolbar(tool) {
       ${rang('sw',1,20,drawStrokeW,'drawStrokeW=+this.value')}
     </div>
     <div class="dtb-g"><div class="dtb-lbl">Fond</div>
-      <input type="color" class="dtb-clr" id="fill-clr" value="${drawFill==='transparent'?'#ffffff':drawFill}" onchange="drawFill=this.value">
-      ${btn('⊘',"drawFill='transparent'",'Pas de fond', drawFill==='transparent'?'on':'')}
+      <input type="color" class="dtb-clr" id="fill-clr"
+        value="${drawFill==='transparent'?'#ffffff':drawFill}"
+        onchange="drawFill=this.value; document.getElementById('btn-fill-none').classList.remove('on')">
+      <div class="dtb-btn ${drawFill==='transparent'?'on':''}" id="btn-fill-none" title="Pas de fond"
+        onclick="if(drawFill==='transparent'){drawFill=document.getElementById('fill-clr').value;this.classList.remove('on')}else{drawFill='transparent';this.classList.add('on')}">⊘</div>
     </div>`;
 
   } else if (tool === 'Surligner') {
@@ -4795,11 +4877,19 @@ function setDrawShape(s) { shapeType = s; showDrawToolbar(currentTool); }
 function onDrawMouseDown(e) {
   if (!DRAW_TOOLS.includes(currentTool)) return;
   e.preventDefault(); e.stopPropagation();
-  const r  = drawOverlay.getBoundingClientRect();
+  // Utiliser e.currentTarget (le canvas cliqué) plutôt que la variable globale drawOverlay
+  // qui peut avoir changé si la souris a survolé une autre page avant ce clic.
+  const ov = e.currentTarget || drawOverlay;
+  const wrap = ov.closest ? ov.closest('.page-wrap') : drawWrap;
+  _drawGestureOv   = ov;
+  _drawGestureWrap = wrap;
+  // Synchroniser les globales avec la page réellement cliquée
+  if (wrap && wrap !== drawWrap) { drawWrap = wrap; drawOverlay = ov; }
+  const r  = ov.getBoundingClientRect();
   const x  = e.clientX - r.left;
   const y  = e.clientY - r.top;
 
-  if (currentTool === 'Note') { placeNote(x, y, drawOverlay.closest('.page-wrap')); return; }
+  if (currentTool === 'Note') { placeNote(x, y, wrap); return; }
 
   if (currentTool === 'Stylo' && penMode === 'line') {
     if (penLinePts.length === 0) penLinePts = [];
@@ -4872,7 +4962,11 @@ function onDrawMouseUp(e) {
   if (!drawIsDown) return;
   drawIsDown = false;
   if (!drawStart) return;
-  const r  = drawOverlay.getBoundingClientRect();
+  // Utiliser l'overlay capturé au mousedown pour la cohérence des coordonnées
+  const ov = _drawGestureOv || drawOverlay;
+  const gestureWrap = _drawGestureWrap || drawWrap;
+  _drawGestureOv = null; _drawGestureWrap = null;
+  const r  = ov.getBoundingClientRect();
   const x  = e.clientX - r.left;
   const y  = e.clientY - r.top;
   const x0 = drawStart.x, y0 = drawStart.y;
@@ -4886,7 +4980,7 @@ function onDrawMouseUp(e) {
     const xs = pts.map(p=>p.x), ys = pts.map(p=>p.y);
     const bx = Math.min(...xs), by = Math.min(...ys);
     const bw = Math.max(...xs)-bx, bh = Math.max(...ys)-by;
-    pendingAnnot = { type:'pen', tool:'Stylo', pts, wrap:drawWrap,
+    pendingAnnot = { type:'pen', tool:'Stylo', pts, wrap:gestureWrap,
       color:drawColor, strokeW:drawStrokeW, opacity:1,
       _bbox:{ x:bx, y:by, w:bw, h:bh } };
     showPendingOverlay(pendingAnnot._bbox);
@@ -4899,7 +4993,7 @@ function onDrawMouseUp(e) {
   const bw = Math.abs(x-x0), bh = Math.abs(y-y0);
   if (bw < 3 && bh < 3) { clearOvCanvas(); return; }
   pendingAnnot = { type:'shape', tool:currentTool, subType:shapeType,
-    x0, y0, x1:x, y1:y, wrap:drawWrap,
+    x0, y0, x1:x, y1:y, wrap:gestureWrap,
     color:drawColor, fill:drawFill, strokeW:drawStrokeW, opacity:drawOpacity,
     _bbox:{ x:bx, y:by, w:bw, h:bh } };
   // Redessiner final net sur le canvas
@@ -5595,6 +5689,47 @@ document.addEventListener('DOMContentLoaded', () => {
   const fi = document.getElementById('wm-img-input');
   if (fi) fi.addEventListener('change', () => {
     document.getElementById('wm-img-name').textContent = fi.files[0]?.name || '—';
+  });
+});
+
+// ── Saisie manuelle du zoom ────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const zv = document.getElementById('zoom-val');
+  if (!zv) return;
+  zv.title  = 'Cliquer pour saisir un zoom précis';
+  zv.style.cursor = 'text';
+
+  zv.addEventListener('click', () => {
+    if (zv.querySelector('input')) return; // déjà en mode édition
+
+    const prev = zoomLevel;
+    const inp  = document.createElement('input');
+    inp.type  = 'text';
+    inp.value = String(zoomLevel);
+    inp.style.cssText = [
+      'width:34px', 'text-align:center', 'background:transparent',
+      'border:none', 'border-bottom:1px solid var(--gold)', 'outline:none',
+      'font-family:Cinzel,serif', 'font-size:.58rem', 'color:var(--gold)',
+      'padding:0', 'margin:0',
+    ].join(';');
+
+    zv.textContent = '';
+    zv.appendChild(inp);
+    inp.select();
+
+    function commit() {
+      const raw = parseInt(inp.value, 10);
+      zv.textContent = zoomLevel + '%';
+      if (!isNaN(raw)) zoomTo(raw);
+      else zv.textContent = prev + '%';
+    }
+    function cancel() { zv.textContent = prev + '%'; }
+
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  { e.preventDefault(); commit(); }
+      if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    });
+    inp.addEventListener('blur', commit);
   });
 });
 
