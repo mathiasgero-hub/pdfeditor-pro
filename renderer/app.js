@@ -1093,6 +1093,9 @@ async function renderPDFFromData({ name, size, data, filePath = null }, pushUndo
       zoomLevel = 100;
       document.getElementById('zoom-val').textContent = '100%';
     }
+    if (activeTabIdx >= 0 && tabs[activeTabIdx]) {
+      tabs[activeTabIdx].zoomLevel = zoomLevel;
+    }
 
     // Metadonnees
     const shortName = name.length > 18 ? name.substring(0, 15) + '...' : name;
@@ -1114,9 +1117,9 @@ async function renderPDFFromData({ name, size, data, filePath = null }, pushUndo
     loadLabel.textContent = 'Preparation des vignettes...';
     await renderThumbnails(pdf);
 
-    // Rendu principal
+    // Rendu principal (en tenant compte du zoom courant)
     loadInner.style.width = '40%';
-    await renderMainPages(pdf, baseFitScale, loadInner, loadLabel);
+    await renderMainPages(pdf, baseFitScale * zoomLevel / 100, loadInner, loadLabel);
 
     loadInner.style.width = '100%';
     loadLabel.textContent = 'Termine';
