@@ -5167,7 +5167,10 @@ async function commitCurrentDrawing(x0, y0, x1, y1) {
     const doc  = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
     const page = doc.getPages()[pageIdx];
     const { height: pH } = page.getSize();
-    const toP  = (sx, sy) => ({ px: sx/scale, py: pH - sy/scale });
+    // Tenir compte de l'origine de la MediaBox (ex : page recadrée avec boxX/boxY > 0)
+    const mb = typeof page.getMediaBox === 'function' ? page.getMediaBox() : { x: 0, y: 0 };
+    const mbX = mb.x || 0, mbY = mb.y || 0;
+    const toP  = (sx, sy) => ({ px: sx/scale + mbX, py: mbY + pH - sy/scale });
 
     const p0 = toP(x0, y0), p1 = toP(x1, y1);
     const pW = Math.abs(p1.px - p0.px), pH2 = Math.abs(p0.py - p1.py);
@@ -5229,7 +5232,9 @@ async function commitPenLine(pts) {
     const doc  = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
     const page = doc.getPages()[pageIdx];
     const { height: pH } = page.getSize();
-    const toP  = (sx, sy) => ({ x: sx/scale, y: pH - sy/scale });
+    const mb = typeof page.getMediaBox === 'function' ? page.getMediaBox() : { x: 0, y: 0 };
+    const mbX = mb.x || 0, mbY = mb.y || 0;
+    const toP  = (sx, sy) => ({ x: sx/scale + mbX, y: mbY + pH - sy/scale });
     const cr = parseInt(drawColor.slice(1,3),16)/255, cg = parseInt(drawColor.slice(3,5),16)/255, cb = parseInt(drawColor.slice(5,7),16)/255;
     const sw = drawStrokeW / scale;
     for (let i=0; i<pts.length-1; i++) {
@@ -5427,7 +5432,9 @@ async function commitPenFreeFromPts(pts, wrap, color, strokeW) {
     const doc  = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
     const page = doc.getPages()[pageIdx];
     const { height: pH } = page.getSize();
-    const toP  = (sx, sy) => ({ x: sx/scale, y: pH - sy/scale });
+    const mb = typeof page.getMediaBox === 'function' ? page.getMediaBox() : { x: 0, y: 0 };
+    const mbX = mb.x || 0, mbY = mb.y || 0;
+    const toP  = (sx, sy) => ({ x: sx/scale + mbX, y: mbY + pH - sy/scale });
     const hexC = color || drawColor;
     const cr   = parseInt(hexC.slice(1,3),16)/255;
     const cg   = parseInt(hexC.slice(3,5),16)/255;
