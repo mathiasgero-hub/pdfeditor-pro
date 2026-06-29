@@ -1088,9 +1088,11 @@ async function renderPDFFromData({ name, size, data, filePath = null }, pushUndo
       tabs[activeTabIdx].baseFitScale = baseFitScale;
     }
 
-    // Reset zoom a 100%
-    zoomLevel = 100;
-    document.getElementById('zoom-val').textContent = '100%';
+    // Reset zoom uniquement pour un nouveau document (pas pour une modification)
+    if (!pushUndo) {
+      zoomLevel = 100;
+      document.getElementById('zoom-val').textContent = '100%';
+    }
 
     // Metadonnees
     const shortName = name.length > 18 ? name.substring(0, 15) + '...' : name;
