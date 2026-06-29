@@ -17,7 +17,7 @@ function createWindow() {
     height: 900,
     minWidth:  960,
     minHeight: 600,
-    title: 'PDFEditor',
+    title: 'PDFEdit - Édition Or',
     backgroundColor: '#111C1C',
     show: false, // évite le flash blanc au démarrage
     webPreferences: {
@@ -55,7 +55,7 @@ function buildNativeMenu() {
   const isMac = process.platform === 'darwin';
   const template = [
     ...(isMac ? [{ label: app.name, submenu: [
-      { role: 'about', label: 'A propos de PDFEditor' }, { type: 'separator' },
+      { role: 'about', label: 'A propos de PDFEdit Or' }, { type: 'separator' },
       { role: 'services' }, { type: 'separator' },
       { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
       { type: 'separator' }, { role: 'quit' }
