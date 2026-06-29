@@ -3140,10 +3140,17 @@ function initSelectionTool() {
     const selT = parseInt(selRect.style.top);
     const selR = selL + w, selB = selT + h;
 
-    // Trouver la page avec le plus grand chevauchement
+    // Trouver la page : priorité à celle qui contient le coin supérieur-gauche de la sélection
+    // (= là où l'utilisateur a commencé à dessiner). Évite le cas où le bas de la sélection
+    // déborde sur la page suivante et fausse l'algorithme de chevauchement maximal.
     let bestWrap = null, bestOverlap = 0, bestPageIdx = 1;
     document.querySelectorAll('.page-wrap').forEach((wrap, i) => {
       const wr = wrap.getBoundingClientRect();
+      // Si le coin supérieur-gauche de la sélection est dans cette page → priorité absolue
+      if (selL >= wr.left && selL <= wr.right && selT >= wr.top && selT <= wr.bottom) {
+        bestWrap = wrap; bestPageIdx = i + 1; bestOverlap = Infinity; return;
+      }
+      if (bestOverlap === Infinity) return; // déjà trouvé via coin sup-gauche
       const ox = Math.max(0, Math.min(selR, wr.right)  - Math.max(selL, wr.left));
       const oy = Math.max(0, Math.min(selB, wr.bottom) - Math.max(selT, wr.top));
       if (ox * oy > bestOverlap) { bestOverlap = ox * oy; bestWrap = wrap; bestPageIdx = i + 1; }
@@ -3151,8 +3158,9 @@ function initSelectionTool() {
 
     if (!bestWrap) { clearSelection(); return; }
     const wr = bestWrap.getBoundingClientRect();
-    const lx = selL - wr.left;
-    const ly = selT - wr.top;
+    // Clamp : s'assurer que la sélection reste dans les bornes de la page
+    const lx = Math.max(0, Math.min(selL - wr.left, wr.width));
+    const ly = Math.max(0, Math.min(selT - wr.top,  wr.height));
     const scale = baseFitScale * zoomLevel / 100;
     currentSel = {
       wrap: bestWrap, pageIdx: bestPageIdx, lx, ly, w, h,
