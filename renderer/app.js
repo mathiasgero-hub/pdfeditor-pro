@@ -512,6 +512,7 @@ let currentTool = 'Lecture';
 
 // ─── Sélection (rectangle pointillé) ───────────────────────────────────────────
 let selStart       = null;
+let selStartWrap   = null;   // page-wrap capturé au mousedown (même logique que l'outil dessin)
 let selRect        = null;
 let selDims        = null;
 let currentSel     = null;
@@ -1198,13 +1199,29 @@ async function renderMainPages(pdf, scale, loadInner, loadLabel) {
     wrap.dataset.page = i;
     wrap.style.cssText = 'position:relative;flex-shrink:0;width:' + vp.width + 'px;height:' + vp.height + 'px';
 
+    // ── Indicateur de page sticky ─────────────────────────────────────────────
+    // position:sticky → reste visible en haut du viewport pendant tout le scroll,
+    // même à 300% où la page fait ~3100 px de haut (label bas invisible).
+    // margin-bottom négatif : 0 hauteur nette dans le flux → le canvas démarre à y=0.
+    const numSticky = document.createElement('div');
+    numSticky.className = 'page-num-sticky';
+    numSticky.style.cssText =
+      'position:sticky;top:24px;z-index:500;pointer-events:none;' +
+      'height:22px;margin-bottom:-22px;' +          // 0 impact sur le flux
+      'display:flex;align-items:center;justify-content:center;' +
+      'font-family:\'Cinzel\',serif;font-size:.65rem;letter-spacing:.08em;' +
+      'color:var(--gold);background:rgba(22,18,10,.82);' +
+      'border-radius:0 0 8px 8px;padding:0 10px;width:fit-content;margin-left:auto;margin-right:auto;';
+    numSticky.textContent = 'Page ' + i + ' / ' + np;
+    wrap.appendChild(numSticky);
+
     // Canvas PDF
     const canvas = document.createElement('canvas');
     canvas.width  = vp.width;
     canvas.height = vp.height;
     wrap.appendChild(canvas);
 
-    // Numero de page
+    // Numero de page (bas, visible au défilement lent / 100%)
     const num = document.createElement('div');
     num.style.cssText = "text-align:center;font-family:'Cinzel',serif;font-size:.6rem;color:#1a1a1a;background:rgba(237,229,205,.75);margin-top:6px;padding:3px 0;letter-spacing:.1em";
     num.textContent = 'Page ' + i + ' / ' + np;
@@ -1668,6 +1685,11 @@ async function renderFormFields(page, vp, wrap) {
       const base = 'position:absolute;left:' + left.toFixed(1) + 'px;top:' + top.toFixed(1) + 'px;z-index:1;' +
                    'width:' + width.toFixed(1) + 'px;height:' + hgt.toFixed(1) + 'px;pointer-events:auto;';
 
+      const pdfRectStr = JSON.stringify(annot.rect || [0,0,0,0]);
+      const pdfPageStr = wrap.dataset.page || '1';
+      // annot.id = "40R" → numéro d'objet PDF.js a résolu
+      const pdfObjNum  = annot.id ? String(annot.id).replace(/R$/,'').trim() : '';
+
       if (annot.fieldType === 'Tx') {
         const multi = !!annot.multiLine;
         const fs    = Math.max(7, Math.min(hgt * 0.65, 13)).toFixed(1);
@@ -1676,9 +1698,12 @@ async function renderFormFields(page, vp, wrap) {
         el.value    = fval;
         el.readOnly = rdonly;
         el.title    = fname;
+        el.dataset.pdfRect   = pdfRectStr;
+        el.dataset.pdfPage   = pdfPageStr;
+        el.dataset.pdfObjNum = pdfObjNum;
         el.style.cssText = base + 'font-size:' + fs + 'px;' + (rdonly ? 'cursor:default;opacity:.8;' : '');
         if (!rdonly) {
-          el.addEventListener('blur', () => updateFormFieldPdf(fname, 'Tx', el.value));
+          el.addEventListener('blur', () => updateFormFieldPdf(fname, 'Tx', el.value, pdfObjNum));
         }
         layer.appendChild(el);
 
@@ -1691,14 +1716,17 @@ async function renderFormFields(page, vp, wrap) {
         el.checked  = checked;
         el.disabled = rdonly;
         el.title    = fname;
+        el.dataset.pdfRect   = pdfRectStr;
+        el.dataset.pdfPage   = pdfPageStr;
+        el.dataset.pdfObjNum = pdfObjNum;
         const sz    = Math.min(width, hgt, 16).toFixed(1);
         el.style.cssText = base + 'width:' + sz + 'px;height:' + sz + 'px;' +
           'top:' + (top + (hgt - parseFloat(sz))/2).toFixed(1) + 'px;' +
           'left:' + (left + (width - parseFloat(sz))/2).toFixed(1) + 'px;';
         if (!rdonly) {
           el.addEventListener('change', () => {
-            const exportVal = annot.exportValue || 'Oui';
-            updateFormFieldPdf(fname, 'Btn', el.checked ? exportVal : null);
+            const exportVal = annot.exportValue || 'Yes';
+            updateFormFieldPdf(fname, 'Btn', el.checked ? exportVal : null, pdfObjNum);
           });
         }
         layer.appendChild(el);
@@ -1712,8 +1740,11 @@ async function renderFormFields(page, vp, wrap) {
           if (fval === o.value) o.selected = true;
           el.appendChild(o);
         });
+        el.dataset.pdfRect   = pdfRectStr;
+        el.dataset.pdfPage   = pdfPageStr;
+        el.dataset.pdfObjNum = pdfObjNum;
         el.style.cssText = base + 'font-size:11px;';
-        el.addEventListener('change', () => updateFormFieldPdf(fname, 'Ch', el.value));
+        el.addEventListener('change', () => updateFormFieldPdf(fname, 'Ch', el.value, pdfObjNum));
         layer.appendChild(el);
       }
     }
@@ -1739,48 +1770,86 @@ async function renderFormFields(page, vp, wrap) {
   }
 }
 
-async function updateFormFieldPdf(fieldName, fieldType, value) {
-  if (!currentPdfData || !fieldName) return;
-  try {
-    const { PDFDocument } = PDFLib;
-    const doc  = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
-    const form = doc.getForm();
+// Cherche un champ pdf-lib par nom exact ou suffixe (PDF.js et pdf-lib peuvent
+// utiliser des noms différents : "Nom" vs "Form1[0].Nom[0]").
+function _pdfLibFindField(form, fieldName) {
+  // 1) Accès direct
+  try { return { field: form.getTextField(fieldName), type: 'Tx' }; } catch {}
+  try { return { field: form.getCheckBox(fieldName),  type: 'Cb' }; } catch {}
+  try { return { field: form.getRadioGroup(fieldName),type: 'Rg' }; } catch {}
+  try { return { field: form.getDropdown(fieldName),  type: 'Ch' }; } catch {}
+  // 2) Recherche partielle (nom qualifié type "Form[0].Champ[0]")
+  const all = form.getFields();
+  console.log('[FORM] champs pdf-lib disponibles:', all.map(f => f.getName()));
+  const match = all.find(f => {
+    const n = f.getName();
+    return n === fieldName || n.endsWith('.' + fieldName) || n.endsWith('[0].' + fieldName + '[0]') || n.includes(fieldName);
+  });
+  return match ? { field: match, type: match.constructor.name } : null;
+}
+
+async function _loadPdfForEdit(b64) {
+  const { PDFDocument } = PDFLib;
+  const bytes = base64ToBytes(b64);
+
+  const tryLoad = async (opts, label) => {
     try {
-      if (fieldType === 'Tx') {
-        form.getTextField(fieldName).setText(value || '');
-      } else if (fieldType === 'Btn') {
-        try {
-          const cb = form.getCheckBox(fieldName);
-          value ? cb.check() : cb.uncheck();
-        } catch {
-          const rg = form.getRadioGroup(fieldName);
-          value ? rg.select(value) : rg.clear();
-        }
-      } else if (fieldType === 'Ch') {
-        form.getDropdown(fieldName).select(value);
-      }
-    } catch(fe) {
-      // Champ introuvable dans pdf-lib — ignorer silencieusement
-      console.warn('Form field not found by pdf-lib:', fieldName, fe.message);
-      return;
+      const doc = await PDFDocument.load(bytes, opts);
+      const n = doc.getForm().getFields().length;
+      console.log(`[LOAD] ${label} → ${n} champs`);
+      if (n > 0) return doc;
+    } catch(e) {
+      console.log(`[LOAD] ${label} → ERREUR: ${e.message}`);
     }
-    const data = bytesToBase64(await doc.save({ useObjectStreams: false }));
-    // Mise à jour silencieuse sans re-render pour préserver le focus
+    return null;
+  };
+
+  return (
+    await tryLoad({ password: '' },                                       'password=""')          ||
+    await tryLoad({},                                                      'standard')             ||
+    await tryLoad({ throwOnInvalidObject: false },                         'throwOnInvalid')       ||
+    await tryLoad({ ignoreEncryption: true, throwOnInvalidObject: false }, 'ignoreEnc+throwOnInv') ||
+    PDFDocument.load(bytes, { ignoreEncryption: true })
+  );
+}
+
+// ─── Sauvegarde d'un champ de formulaire ─────────────────────────────────────
+// Utilise PDF.js annotationStorage + saveDocument (gère ObjStm, chiffrement…).
+// pdfObjNum = numéro d'objet PDF (ex: "40") provenant de annot.id lors du rendu.
+async function updateFormFieldPdf(fieldName, fieldType, value, pdfObjNum) {
+  if (!currentPdfData || !fieldName) return;
+  if (!currentPdfDoc || typeof currentPdfDoc.saveDocument !== 'function') {
+    console.warn('[FORM] saveDocument non disponible sur cette version de PDF.js');
+    return;
+  }
+  if (!pdfObjNum) {
+    // Tenter de le retrouver depuis le DOM
+    const el = document.querySelector(`.form-layer [title="${CSS.escape(fieldName)}"]`);
+    pdfObjNum = el ? el.dataset.pdfObjNum : '';
+  }
+  if (!pdfObjNum) { console.warn('[FORM] pdfObjNum manquant pour', fieldName); return; }
+
+  try {
+    // Clé annotationStorage = référence objet PDF.js (ex: "40R")
+    const annotId = pdfObjNum + 'R';
+    const storage = currentPdfDoc.annotationStorage;
+    storage.setValue(annotId, { value: value ?? '' });
+
+    const bytes = await currentPdfDoc.saveDocument();
+    const data  = bytesToBase64(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
+    console.log('[FORM] saveDocument OK, bytes:', bytes.byteLength ?? bytes.length);
+
     if (currentPdfData) {
       undoStack.push({ name: currentPdfName, size: currentPdfSize, data: currentPdfData, filePath: currentFilePath });
       if (undoStack.length > MAX_UNDO) undoStack.shift();
     }
-    redoStack     = [];
+    redoStack      = [];
     currentPdfData = data;
     currentPdfSize = Math.round(data.length * 0.75);
-    if (tabs[activeTabIdx]) {
-      tabs[activeTabIdx].data = data;
-      tabs[activeTabIdx].size = currentPdfSize;
-    }
+    if (tabs[activeTabIdx]) { tabs[activeTabIdx].data = data; tabs[activeTabIdx].size = currentPdfSize; }
     updateUndoRedoBtns();
   } catch(err) {
-    console.warn('updateFormFieldPdf:', err.message);
-    t('⚠ Impossible de sauvegarder ce champ (' + err.message.slice(0, 60) + ')');
+    console.warn('[FORM] updateFormFieldPdf:', err.message);
   }
 }
 
@@ -2792,9 +2861,55 @@ function newDocument() {
 }
 
 
+// ─── Flush formulaire avant enregistrement ───────────────────────────────────
+// Capture l'état DOM actuel de tous les champs visibles et l'applique à currentPdfData
+// au cas où le focus est encore dans un champ (blur non encore déclenché).
+// Capture tous les champs DOM visibles et les écrit dans le PDF via PDF.js saveDocument.
+// Appelée juste avant chaque save pour attraper l'état du champ actif (blur non encore déclenché).
+async function flushFormFields() {
+  const inputs = document.querySelectorAll('.form-layer input, .form-layer textarea, .form-layer select');
+  if (!inputs.length || !currentPdfData || !currentPdfDoc) return;
+  if (typeof currentPdfDoc.saveDocument !== 'function') return;
+
+  try {
+    const storage = currentPdfDoc.annotationStorage;
+    let hasChanges = false;
+
+    for (const el of inputs) {
+      const objNum = el.dataset.pdfObjNum;
+      if (!objNum) continue;
+      const annotId = objNum + 'R'; // ex: "40R"
+
+      let val;
+      if (el.type === 'checkbox') {
+        val = el.checked ? (el.dataset.exportValue || 'Yes') : 'Off';
+      } else if (el.type === 'radio') {
+        val = el.checked ? (el.value || 'Yes') : 'Off';
+      } else {
+        val = el.value || '';
+      }
+
+      storage.setValue(annotId, { value: val });
+      hasChanges = true;
+    }
+
+    if (hasChanges) {
+      const bytes = await currentPdfDoc.saveDocument();
+      const data  = bytesToBase64(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
+      currentPdfData = data;
+      currentPdfSize = Math.round(data.length * 0.75);
+      if (tabs[activeTabIdx]) { tabs[activeTabIdx].data = data; tabs[activeTabIdx].size = currentPdfSize; }
+      console.log('[FORM] flushFormFields OK, bytes:', bytes.byteLength ?? bytes.length);
+    }
+  } catch(e) {
+    console.warn('flushFormFields:', e.message);
+  }
+}
+
 // ─── Enregistrer (Ctrl+S) ────────────────────────────────────────────────────
 async function saveDocument() {
   if (!currentPdfData) { t("Aucun document ouvert"); return; }
+  await flushFormFields();   // capture les champs dont le blur n'a pas encore été déclenché
   if (currentFilePath) {
     const res = await window.electronAPI.writeFile(currentFilePath, currentPdfData);
     if (res.success) { t("Enregistre : " + currentPdfName); }
@@ -2810,6 +2925,7 @@ async function saveDocument() {
 // Pour image: rendu PDF.js page 1 a 2x → canvas → base64 → fichier
 async function saveDocumentAs() {
   if (!currentPdfData) { t("Aucun document ouvert"); return; }
+  await flushFormFields();
 
   const dlg = await window.electronAPI.savePDF(currentPdfName || 'document.pdf');
   if (dlg.canceled || !dlg.filePath) return;
@@ -3087,6 +3203,10 @@ function initSelectionTool() {
     e.preventDefault();
     clearSelection();
 
+    // Capturer le wrap exactement au clic — même technique que l'outil dessin
+    // (e.target.closest au lieu d'un algorithme de détection à posteriori).
+    selStartWrap = e.target.closest('.page-wrap') || null;
+
     // Coordonnées viewport brutes — selRect sera position:fixed sur document.body
     selStart = { vx: e.clientX, vy: e.clientY };
 
@@ -3129,43 +3249,48 @@ function initSelectionTool() {
   // ── mouseup sur document : valider la sélection ──────────────────────────
   document.addEventListener('mouseup', e => {
     if (currentTool !== 'Sélection' || !selStart) return;
-    selStart = null;
+    const startWrap = selStartWrap;   // récupérer avant reset
+    selStart = null; selStartWrap = null;
     if (!selRect) return;
     const w = parseInt(selRect.style.width)  || 0;
     const h = parseInt(selRect.style.height) || 0;
     if (w < 8 || h < 8) { clearSelection(); return; }
 
-    // Coords viewport du rectangle final
+    // Utiliser le wrap capturé au mousedown — même technique que l'outil dessin.
+    // Élimine tout algorithme de détection a posteriori (source des bugs à fort zoom).
+    if (!startWrap) { clearSelection(); return; }
+
     const selL = parseInt(selRect.style.left);
     const selT = parseInt(selRect.style.top);
-    const selR = selL + w, selB = selT + h;
+    const selR = selL + w;
 
-    // Trouver la page : priorité à celle qui contient le coin supérieur-gauche de la sélection
-    // (= là où l'utilisateur a commencé à dessiner). Évite le cas où le bas de la sélection
-    // déborde sur la page suivante et fausse l'algorithme de chevauchement maximal.
-    let bestWrap = null, bestOverlap = 0, bestPageIdx = 1;
-    document.querySelectorAll('.page-wrap').forEach((wrap, i) => {
-      const wr = wrap.getBoundingClientRect();
-      // Si le coin supérieur-gauche de la sélection est dans cette page → priorité absolue
-      if (selL >= wr.left && selL <= wr.right && selT >= wr.top && selT <= wr.bottom) {
-        bestWrap = wrap; bestPageIdx = i + 1; bestOverlap = Infinity; return;
-      }
-      if (bestOverlap === Infinity) return; // déjà trouvé via coin sup-gauche
-      const ox = Math.max(0, Math.min(selR, wr.right)  - Math.max(selL, wr.left));
-      const oy = Math.max(0, Math.min(selB, wr.bottom) - Math.max(selT, wr.top));
-      if (ox * oy > bestOverlap) { bestOverlap = ox * oy; bestWrap = wrap; bestPageIdx = i + 1; }
-    });
+    // dataset.page est défini au render (wrap.dataset.page = i, 1-based).
+    // Plus fiable que wraps.indexOf() qui peut être faussé par des wraps extra (mesures, etc.).
+    const pageIdx = parseInt(startWrap.dataset.page) || 0;
+    if (pageIdx < 1) { clearSelection(); return; }
 
-    if (!bestWrap) { clearSelection(); return; }
-    const wr = bestWrap.getBoundingClientRect();
-    // Clamp : s'assurer que la sélection reste dans les bornes de la page
+    const wr = startWrap.getBoundingClientRect();
+
+    // Coordonnées canvas relatives au wrap (clampées aux bornes de la page)
     const lx = Math.max(0, Math.min(selL - wr.left, wr.width));
     const ly = Math.max(0, Math.min(selT - wr.top,  wr.height));
     const scale = baseFitScale * zoomLevel / 100;
+    const pdfX = lx / scale;
+    const pdfY = ly / scale;
+    // Clamp largeur/hauteur pour ne pas dépasser le bord de la page
+    const pdfW = Math.min(w / scale, wr.width  / scale - pdfX);
+    const pdfH = Math.min(h / scale, wr.height / scale - pdfY);
+
     currentSel = {
-      wrap: bestWrap, pageIdx: bestPageIdx, lx, ly, w, h,
-      pdfX: lx / scale, pdfY: ly / scale, pdfW: w / scale, pdfH: h / scale, scale
+      wrap: startWrap, pageIdx, lx, ly, w, h,
+      pdfX, pdfY, pdfW, pdfH, scale
     };
+    console.log('[SEL] pageIdx=', pageIdx,
+      'selL=', selL, 'selT=', selT, 'w=', w, 'h=', h,
+      'wr.left=', wr.left, 'wr.top=', wr.top, 'wr.w=', wr.width, 'wr.h=', wr.height,
+      '→ lx=', lx, 'ly=', ly,
+      '| scale=', scale,
+      '| pdfX=', pdfX, 'pdfY=', pdfY, 'pdfW=', pdfW, 'pdfH=', pdfH);
     showSelToolbar(selR, selT);
   });
 }
@@ -3245,60 +3370,43 @@ function askCropScope(pageIdx, totalPages) {
   });
 }
 
-// ─── Recadrage de page ────────────────────────────────────────────────────────
+// ─── Effacement de zone (rectangle blanc) ────────────────────────────────────
+// Remplace l'ancien recadrage MediaBox par un rectangle blanc plein,
+// dont les coordonnées sont identiques à selRedact — système maîtrisé.
 async function selCrop() {
-  if (!currentSel || !currentPdfData) return;
-  const { PDFDocument } = PDFLib;
+  if (!currentSel || !currentPdfData) { t('Aucune sélection'); return; }
+  const { PDFDocument, rgb } = PDFLib;
   const { pageIdx, pdfX, pdfY, pdfW, pdfH } = currentSel;
-  if (pdfW < 4 || pdfH < 4) { t('Sélection trop petite pour recadrer.'); return; }
-
-  const doc = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
-  const totalPages = doc.getPageCount();
-
-  // Demander le périmètre si le document a plusieurs pages
-  let scope = 'current';
-  if (totalPages > 1) {
-    scope = await askCropScope(pageIdx, totalPages);
-    if (!scope) return; // annulé
-  }
-
+  if (pdfW < 2 || pdfH < 2) { t('Sélection trop petite.'); return; }
   try {
-    // Dimensions de la page de référence (pour le calcul des ratios)
-    const refPage = doc.getPage(pageIdx - 1);
-    const { width: refW, height: refH } = refPage.getSize();
-
-    // Ratios de recadrage relatifs à la page de référence (Y : axe PDF = bas)
-    const ratioX1 = pdfX / refW;                        // bord gauche
-    const ratioY1 = (refH - pdfY - pdfH) / refH;        // bord bas (PDF)
-    const ratioX2 = (pdfX + pdfW) / refW;               // bord droit
-    const ratioY2 = (refH - pdfY) / refH;               // bord haut (PDF)
-
-    const targets = scope === 'all'
-      ? Array.from({ length: totalPages }, (_, i) => i)
-      : [pageIdx - 1];
-
-    for (const i of targets) {
-      const page = doc.getPage(i);
-      const { width: pgW, height: pgH } = page.getSize();
-      const boxX = ratioX1 * pgW;
-      const boxY = ratioY1 * pgH;
-      const boxW = (ratioX2 - ratioX1) * pgW;
-      const boxH = (ratioY2 - ratioY1) * pgH;
-      page.setMediaBox(boxX, boxY, boxW, boxH);
-      page.setCropBox (boxX, boxY, boxW, boxH);
-    }
-
-    const newBytes = await doc.save();
-    const newB64   = bytesToBase64(newBytes);
+    const doc  = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
+    const page = doc.getPages()[pageIdx - 1];
+    const { width: pageW, height: pH } = page.getSize();
+    const mb = typeof page.getMediaBox === 'function' ? page.getMediaBox() : { x:0, y:0, width:pageW, height:pH };
+    console.log('[CROP] pageIdx=', pageIdx, '| pageSize=', pageW, 'x', pH,
+      '| MediaBox x=', mb.x, 'y=', mb.y, 'w=', mb.width, 'h=', mb.height,
+      '| pdfX=', pdfX, 'pdfY=', pdfY, 'pdfW=', pdfW, 'pdfH=', pdfH,
+      '| drawRect y_bottom=', pH - pdfY - pdfH);
+    // Coordonnées PDF : x depuis la gauche, y depuis le bas (axe PDF inversé)
+    page.drawRectangle({
+      x: pdfX,
+      y: pH - pdfY - pdfH,
+      width:  pdfW,
+      height: pdfH,
+      color:       rgb(1, 1, 1),
+      borderColor: rgb(1, 1, 1),
+      borderWidth: 1,
+      opacity:      1,
+      borderOpacity: 1,
+    });
+    const data = bytesToBase64(await doc.save({ useObjectStreams: false }));
+    await renderPDFFromData({ name: currentPdfName, size: Math.round(data.length * .75), data, filePath: currentFilePath }, true);
     clearSelection();
-    await renderPDFFromData({
-      name: currentPdfName, size: newBytes.length,
-      data: newB64, filePath: currentFilePath,
-    }, true);
-    t(scope === 'all' ? 'Toutes les pages recadrées.' : 'Page recadrée.');
+    _logMod('Zone effacée');
+    t('Zone effacée.');
   } catch(e) {
-    console.error('[crop]', e);
-    t('Erreur recadrage : ' + e.message);
+    console.error('[selCrop]', e);
+    t('Erreur : ' + e.message);
   }
 }
 
@@ -3722,6 +3830,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (window.electronAPI?.rendererReady) window.electronAPI.rendererReady();
 });
 
+// ── Suivi de page en temps réel lors du scroll ────────────────────────────────
+// Met à jour l'indicateur cur-page dès que l'utilisateur fait défiler le PDF.
+// Critique à fort zoom (300%) où la page fait ~3000 px et le label bas est hors écran.
+document.addEventListener('DOMContentLoaded', () => {
+  const vpEl    = document.getElementById('pdf-viewport');
+  const curEl   = document.getElementById('cur-page');
+  if (!vpEl || !curEl) return;
+
+  vpEl.addEventListener('scroll', () => {
+    const wraps = document.querySelectorAll('.page-wrap');
+    if (!wraps.length) return;
+    const viewMid = vpEl.scrollTop + vpEl.clientHeight / 2;
+    let bestPage = 1;
+    wraps.forEach((wrap, idx) => {
+      // offsetTop est relatif au premier ancêtre positionné (= #pdf-viewport)
+      if (wrap.offsetTop <= viewMid) bestPage = idx + 1;
+    });
+    curEl.textContent = bestPage;
+  }, { passive: true });
+});
+
 // ── Redimensionnement des panneaux latéraux ───────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   const MIN_W = 120, MAX_W = 520;
@@ -4132,8 +4261,15 @@ async function selRedact(fillR, fillG, fillB) {
     const doc  = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
     const page = doc.getPages()[currentSel.pageIdx - 1];
     const { height: pH } = page.getSize();
+    // Même formule que l'outil dessin : px = sx/scale + mbX, py = mbY + pH - sy/scale
+    const mb   = typeof page.getMediaBox === 'function' ? page.getMediaBox() : { x:0, y:0 };
+    const mbX  = mb.x || 0, mbY = mb.y || 0;
+    console.log('[REDACT] pageIdx=', currentSel.pageIdx, 'pH=', pH, 'mb=', mb,
+      'pdfX=', currentSel.pdfX, 'pdfY=', currentSel.pdfY,
+      '→ x=', currentSel.pdfX + mbX, 'y=', mbY + pH - currentSel.pdfY - currentSel.pdfH);
     page.drawRectangle({
-      x: currentSel.pdfX, y: pH - currentSel.pdfY - currentSel.pdfH,
+      x: currentSel.pdfX + mbX,
+      y: mbY + pH - currentSel.pdfY - currentSel.pdfH,
       width: currentSel.pdfW, height: currentSel.pdfH,
       color: rgb(fillR ?? 1, fillG ?? 1, fillB ?? 1), opacity: 1, borderWidth: 0
     });
@@ -4619,6 +4755,8 @@ function menuAction(action) {
     case 'save':   saveDocument();   break;
     case 'saveAs': saveDocumentAs(); break;
     case 'search': t('Rechercher & Remplacer'); break;
+    case 'cut':    menuCut();  break;
+    case 'copy':   menuCopy(); break;
     default:       t(action);
   }
 }

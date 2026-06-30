@@ -74,7 +74,8 @@ function buildNativeMenu() {
     { label: 'Edition', submenu: [
       { role: 'undo', label: 'Annuler' }, { role: 'redo', label: 'Retablir' },
       { type: 'separator' },
-      { role: 'cut', label: 'Couper' }, { role: 'copy', label: 'Copier' },
+      { label: 'Couper',  accelerator: 'CmdOrCtrl+X', click: () => mainWindow.webContents.send('menu-action', 'cut')  },
+      { label: 'Copier',  accelerator: 'CmdOrCtrl+C', click: () => mainWindow.webContents.send('menu-action', 'copy') },
       { role: 'paste', label: 'Coller' }, { role: 'selectAll', label: 'Tout selectionner' },
       { type: 'separator' },
       { label: 'Rechercher...', accelerator: 'CmdOrCtrl+H', click: () => mainWindow.webContents.send('menu-action', 'search') }
@@ -324,8 +325,27 @@ ipcMain.handle('open-image-dialog', async () => {
 ipcMain.handle('print-pdf', async (event, { pdfData }) => {
   const tmpPath = path.join(os.tmpdir(), 'pdfeditor_print_' + Date.now() + '.pdf');
   fs.writeFileSync(tmpPath, Buffer.from(pdfData, 'base64'));
-  await shell.openPath(tmpPath);
-  return { ok: true };
+
+  return new Promise((resolve) => {
+    const printWin = new BrowserWindow({
+      show: false,
+      webPreferences: { plugins: true, nodeIntegration: false }
+    });
+    printWin.loadURL('file://' + tmpPath);
+    printWin.webContents.once('did-finish-load', () => {
+      printWin.webContents.print({ silent: false, printBackground: true }, (success, reason) => {
+        printWin.destroy();
+        try { fs.unlinkSync(tmpPath); } catch {}
+        resolve({ ok: success, reason });
+      });
+    });
+    // Fallback si le chargement échoue
+    printWin.webContents.once('did-fail-load', () => {
+      printWin.destroy();
+      shell.openPath(tmpPath); // ouvre dans le lecteur système
+      resolve({ ok: false, reason: 'load-failed' });
+    });
+  });
 });
 
 

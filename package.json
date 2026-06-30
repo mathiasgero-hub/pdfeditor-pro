@@ -11,10 +11,12 @@
     "dist:linux": "electron-builder --linux"
   },
   "devDependencies": {
-    "electron": "^28.2.0",
+    "electron": "^32.3.3",
     "electron-builder": "^24.9.1"
   },
   "dependencies": {
+    "onnxruntime-node": "^1.27.0",
+    "onnxruntime-web": "^1.27.0",
     "tesseract.js": "^5.0.5"
   },
   "build": {
@@ -40,7 +42,12 @@
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "assets/icon.ico"
     },
@@ -53,7 +60,13 @@
     },
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "icon": "assets/icon.png",
       "category": "public.app-category.productivity"
