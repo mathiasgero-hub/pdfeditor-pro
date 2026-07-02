@@ -36,6 +36,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Retirer les listeners (nettoyage)
   removeAllListeners: (channel) => { ipcRenderer.removeAllListeners(channel); },
 
+  // ─── Fichiers récents ─────────────────────────────────────────────────────────
+  getRecentFiles:  ()         => ipcRenderer.invoke('get-recent-files'),
+  addToRecent:     (filePath) => ipcRenderer.invoke('add-to-recent', filePath),
+  openRecentFile:  (filePath) => ipcRenderer.invoke('open-recent-file', filePath),
+  onRecentUpdated: (cb)       => ipcRenderer.on('recent-files-updated', (_, list) => cb(list)),
+
+  // ─── Fermeture propre ────────────────────────────────────────────────────────
+  onCloseRequested: (cb) => ipcRenderer.on('app-close-requested', cb),
+  confirmClose:     ()   => ipcRenderer.send('confirm-close'),
+
   // ─── Signal renderer prêt ────────────────────────────────────────────────────
   rendererReady: () => ipcRenderer.invoke('renderer-ready'),
 

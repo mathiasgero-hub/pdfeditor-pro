@@ -136,6 +136,27 @@ body{
 .mdi .kbd{margin-left:auto;font-size:.65rem;color:var(--txt2);font-family:'Cinzel',serif}
 .msep{height:1px;background:var(--gold-d);margin:4px 8px;opacity:.35}
 
+/* Sous-menu récents */
+.mdi-sub{position:relative;}
+.md-sub{
+  display:none;
+  position:absolute;
+  left:100%;top:-5px;
+  min-width:280px;max-width:420px;
+  background:var(--bg-menu);
+  border:1px solid var(--gold-d);
+  border-top:2px solid var(--gold);
+  box-shadow:0 12px 40px rgba(0,0,0,.7);
+  z-index:10000;
+  padding:5px 0;
+}
+.mdi-sub:hover .md-sub{display:block;}
+.recent-path{
+  font-size:.68rem;color:var(--txt2);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  max-width:300px;display:block;margin-top:1px;
+}
+
 /* Header right */
 #hdr-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
 .hbtn{
@@ -262,8 +283,8 @@ body{
 #dz-btn:hover{background:rgba(200,150,46,.25)}
 
 /* Pages PDF rendues */
-#pdf-pages{display:none;min-width:100%;box-sizing:border-box;flex-direction:column;align-items:center;gap:20px}
-#pdf-pages canvas{box-shadow:0 4px 24px rgba(0,0,0,.35);display:block;max-width:100%}
+#pdf-pages{display:none;width:max-content;min-width:100%;box-sizing:border-box;flex-direction:column;align-items:center;gap:20px}
+#pdf-pages canvas{box-shadow:0 4px 24px rgba(0,0,0,.35);display:block}
 
 /* Barre de chargement */
 #load-bar{display:none;width:580px;margin:20px auto 0}

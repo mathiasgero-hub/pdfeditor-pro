@@ -602,8 +602,13 @@ function makeTab(overrides) {
     pdfDoc: null, baseFitScale: 1, zoomLevel: 100, renderGen: 0, bookmarks: [],
     thumbCache: null,   // tableau de data URLs — vignettes pré-rendues
     pagesNode: null,    // div détaché contenant les pages rendues
-    scrollTop: 0        // position de scroll sauvegardée
+    scrollTop: 0,       // position de scroll sauvegardée
+    savedData: null     // snapshot des données au dernier enregistrement (dirty tracking)
   }, overrides);
+}
+
+function isTabDirty(tab) {
+  return !!(tab && tab.data && tab.data !== tab.savedData);
 }
 
 function syncActiveTab() {
@@ -639,8 +644,9 @@ function renderTabBar() {
     const el = document.createElement('div');
     el.className = 'doc-tab' + (idx === activeTabIdx ? ' active' : '');
     const safeName = (tab.name || 'Nouveau').replace(/</g, '&lt;');
-    el.innerHTML = '<i class="fa-regular fa-file-pdf"></i><span class="tab-name">' + safeName +
-      '</span><span class="doc-tab-close" title="Fermer">x</span>';
+    const dot = isTabDirty(tab) ? '<span title="Modifications non enregistrées" style="color:var(--gold);margin-left:2px">●</span>' : '';
+    el.innerHTML = '<i class="fa-regular fa-file-pdf"></i><span class="tab-name">' + safeName + dot +
+      '</span><span class="doc-tab-close" title="Fermer">×</span>';
     el.querySelector('.doc-tab-close').addEventListener('click', e => { e.stopPropagation(); closeTab(idx); });
     el.addEventListener('click', () => { if (idx !== activeTabIdx) switchTab(idx); });
     list.appendChild(el);
@@ -705,6 +711,20 @@ async function switchTab(idx) {
 }
 
 async function closeTab(idx) {
+  // Sync si c'est l'onglet actif (pour avoir tab.data à jour)
+  if (idx === activeTabIdx) syncActiveTab();
+  const tab = tabs[idx];
+
+  // Vérifier si l'onglet a des modifications non sauvegardées
+  if (tab && isTabDirty(tab)) {
+    const answer = await showSaveBeforeCloseDialog(tab.name || 'Sans titre');
+    if (answer === 'cancel') return;
+    if (answer === 'save') {
+      const ok = await saveTabBeforeClose(tab);
+      if (!ok) return; // save annulé
+    }
+  }
+
   if (tabs.length <= 1) {
     // Dernier onglet : vider
     tabs = []; activeTabIdx = -1;
@@ -1071,6 +1091,13 @@ async function renderPDFFromData({ name, size, data, filePath = null }, pushUndo
     currentPdfSize = size;
     currentPdfData = data;
     currentFilePath = filePath || null;
+    // savedData = état de référence : seulement à l'ouverture initiale (pushUndo=false),
+    // PAS lors des edits qui passent aussi par renderPDFFromData (pushUndo=true)
+    if (!pushUndo && tabs[activeTabIdx]) tabs[activeTabIdx].savedData = data;
+    // Ajouter aux fichiers récents (drag-drop ou ouverture externe avec chemin connu)
+    if (filePath && window.electronAPI?.addToRecent) {
+      window.electronAPI.addToRecent(filePath).catch(() => {});
+    }
     // Sync into active tab
     if (activeTabIdx >= 0 && tabs[activeTabIdx]) {
       tabs[activeTabIdx].pdfDoc = pdf; tabs[activeTabIdx].name = name;
@@ -2271,9 +2298,8 @@ function restoreThumbsFromCache(thumbCache, pdf) {
 
 // Scroll vers une page dans la vue principale
 function scrollToPage(pageNum) {
-  const pagesEl = document.getElementById('pdf-pages');
-  const wraps   = pagesEl.querySelectorAll('.page-wrap');
-  if (wraps[pageNum - 1]) wraps[pageNum - 1].scrollIntoView({ behavior: 'smooth' });
+  const wrap = document.querySelector(`.page-wrap[data-page="${pageNum}"]`);
+  if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
 }
 
 // ─── Drag & drop ──────────────────────────────────────────────────────────────
@@ -2909,11 +2935,15 @@ async function flushFormFields() {
 // ─── Enregistrer (Ctrl+S) ────────────────────────────────────────────────────
 async function saveDocument() {
   if (!currentPdfData) { t("Aucun document ouvert"); return; }
-  await flushFormFields();   // capture les champs dont le blur n'a pas encore été déclenché
+  await flushFormFields();
   if (currentFilePath) {
     const res = await window.electronAPI.writeFile(currentFilePath, currentPdfData);
-    if (res.success) { t("Enregistre : " + currentPdfName); }
-    else             { t("Erreur : " + res.error); }
+    if (res.success) {
+      t("Enregistre : " + currentPdfName);
+      if (tabs[activeTabIdx]) tabs[activeTabIdx].savedData = currentPdfData;
+    } else {
+      t("Erreur : " + res.error);
+    }
   } else {
     await saveDocumentAs();
   }
@@ -2993,6 +3023,11 @@ async function saveDocumentAs() {
     if (ext === 'pdf') {
       currentFilePath = fp;
       currentPdfName  = fp.split(/[\\/]/).pop();
+      if (tabs[activeTabIdx]) {
+        tabs[activeTabIdx].filePath  = fp;
+        tabs[activeTabIdx].name      = currentPdfName;
+        tabs[activeTabIdx].savedData = currentPdfData;
+      }
       t("PDF enregistre : " + currentPdfName);
     } else {
       t("Exporte : " + fp.split(/[\\/]/).pop());
@@ -3418,6 +3453,9 @@ function updateUndoRedoBtns() {
   const r = document.getElementById('btn-redo');
   if (u) u.classList.toggle('dis', undoStack.length === 0);
   if (r) r.classList.toggle('dis', redoStack.length === 0);
+  // Rafraîchir la tab bar pour afficher/masquer le point dirty
+  const list = document.getElementById('tab-list');
+  if (list && tabs.length) renderTabBar();
 }
 
 async function undoPDF() {
@@ -3759,6 +3797,43 @@ function selCopy() {
 }
 
 // ── Fonctions menu Édition ────────────────────────────────────────────────────
+async function menuCrop() {
+  if (!currentSel || !currentPdfData) { t('Sélectionnez d\'abord une zone avec l\'outil Sélection.'); return; }
+  const { PDFDocument } = PDFLib;
+  const { pageIdx, pdfX, pdfY, pdfW, pdfH } = currentSel;
+  if (pdfW < 2 || pdfH < 2) { t('Sélection trop petite.'); return; }
+  try {
+    const doc = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
+    const pages = doc.getPages();
+    const totalPages = pages.length;
+
+    const scope = await askCropScope(pageIdx, totalPages);
+    if (!scope) return;
+
+    const applyTo = scope === 'all' ? pages : [pages[pageIdx - 1]];
+
+    for (const page of applyTo) {
+      const { width: pageW, height: pH } = page.getSize();
+      const mb = typeof page.getMediaBox === 'function' ? page.getMediaBox() : { x: 0, y: 0, width: pageW, height: pH };
+      const mbX = mb.x || 0, mbY = mb.y || 0;
+      const newX = pdfX + mbX;
+      const newY = mbY + pH - pdfY - pdfH;
+      console.log('[CROP] page', page, '| newX=', newX, 'newY=', newY, 'w=', pdfW, 'h=', pdfH);
+      page.setMediaBox(newX, newY, pdfW, pdfH);
+      if (typeof page.setCropBox === 'function') page.setCropBox(newX, newY, pdfW, pdfH);
+    }
+
+    const data = bytesToBase64(await doc.save({ useObjectStreams: false }));
+    await renderPDFFromData({ name: currentPdfName, size: Math.round(data.length * .75), data, filePath: currentFilePath }, true);
+    clearSelection();
+    _logMod('Page recadrée');
+    t(scope === 'all' ? 'Toutes les pages recadrées.' : 'Page recadrée.');
+  } catch(e) {
+    console.error('[menuCrop]', e);
+    t('Erreur : ' + e.message);
+  }
+}
+
 function menuCopy() {
   if (currentSel) { selCopy(); }
   else { t('Sélectionnez d\'abord une zone avec l\'outil Sélection.'); }
@@ -4781,6 +4856,150 @@ document.querySelectorAll('.ffi').forEach(ff => { ff.addEventListener('click', f
 
 // ─── Chat IA → implémenté en bas du fichier ──────────────────────────────
 
+// ─── Sauvegarde avant fermeture ──────────────────────────────────────────────
+
+// Sauvegarde silencieuse d'un onglet (sans changer l'onglet actif)
+async function saveTabBeforeClose(tab) {
+  if (!tab.data) return true;
+  // Si l'onglet actif : flush les champs de formulaire d'abord
+  if (tabs[activeTabIdx] === tab) await flushFormFields();
+
+  if (tab.filePath) {
+    const res = await window.electronAPI.writeFile(tab.filePath, tab.data);
+    if (res.success) { tab.savedData = tab.data; return true; }
+    t('Erreur sauvegarde : ' + res.error);
+    return false;
+  }
+  // Pas de chemin → Save As (nécessite de switcher sur cet onglet)
+  syncActiveTab();
+  const prevIdx = activeTabIdx;
+  const idx = tabs.indexOf(tab);
+  if (idx >= 0 && idx !== prevIdx) { activeTabIdx = idx; loadActiveTab(); }
+
+  const dlg = await window.electronAPI.savePDF(tab.name || 'document.pdf');
+  if (dlg.canceled || !dlg.filePath) {
+    if (idx >= 0 && idx !== prevIdx) { activeTabIdx = prevIdx; loadActiveTab(); }
+    return false; // annulé
+  }
+  const fp  = dlg.filePath;
+  const res = await window.electronAPI.writeFile(fp, tab.data);
+  if (res.success) {
+    tab.filePath  = fp;
+    tab.name      = fp.split(/[\\/]/).pop();
+    tab.savedData = tab.data;
+  }
+  if (idx >= 0 && idx !== prevIdx) { activeTabIdx = prevIdx; loadActiveTab(); }
+  return res.success;
+}
+
+// Dialog "modifications non enregistrées" — traite les onglets dirty un par un
+async function handleAppCloseRequested() {
+  syncActiveTab();
+  const dirty = tabs.filter(isTabDirty);
+  if (!dirty.length) { window.electronAPI.confirmClose(); return; }
+
+  for (const tab of dirty) {
+    const answer = await showSaveBeforeCloseDialog(tab.name || 'Sans titre');
+    if (answer === 'cancel') return;           // l'utilisateur annule la fermeture
+    if (answer === 'save') {
+      const ok = await saveTabBeforeClose(tab);
+      if (!ok) return;                         // save annulé → ne pas fermer
+    }
+    // 'discard' → on continue sans sauvegarder
+  }
+  window.electronAPI.confirmClose();
+}
+
+// Affiche un dialogue modal et retourne une promesse : 'save' | 'discard' | 'cancel'
+function showSaveBeforeCloseDialog(docName) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:50000;display:flex;align-items:center;justify-content:center;';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--bg-panel);border:1px solid var(--gold);border-top:3px solid var(--gold);border-radius:6px;padding:28px 32px;min-width:360px;max-width:500px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.8);';
+
+    const icon = document.createElement('div');
+    icon.style.cssText = 'font-size:2rem;color:var(--gold);margin-bottom:14px;';
+    icon.innerHTML = '<i class="fa-solid fa-floppy-disk"></i>';
+
+    const title = document.createElement('div');
+    title.style.cssText = 'font-family:Cinzel,serif;font-size:.95rem;color:var(--gold-l);margin-bottom:10px;';
+    title.textContent = 'Modifications non enregistrées';
+
+    const msg = document.createElement('div');
+    msg.style.cssText = 'font-family:"Cormorant Garamond",serif;font-size:.95rem;color:var(--txt);margin-bottom:24px;line-height:1.5;';
+    msg.innerHTML = `<strong style="color:var(--gold-l)">${docName}</strong><br>a des modifications non enregistrées.<br>Voulez-vous enregistrer avant de quitter ?`;
+
+    const btns = document.createElement('div');
+    btns.style.cssText = 'display:flex;gap:10px;justify-content:center;flex-wrap:wrap;';
+
+    const mkBtn = (label, color, val) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.style.cssText = `padding:8px 20px;border:1px solid ${color};background:transparent;color:${color};border-radius:4px;font-family:"Cormorant Garamond",serif;font-size:.9rem;cursor:pointer;transition:all .15s;`;
+      b.onmouseover = () => { b.style.background = color; b.style.color = '#111'; };
+      b.onmouseout  = () => { b.style.background = 'transparent'; b.style.color = color; };
+      b.onclick = () => { document.body.removeChild(ov); resolve(val); };
+      return b;
+    };
+
+    btns.appendChild(mkBtn('Enregistrer',       'var(--gold)',  'save'));
+    btns.appendChild(mkBtn('Ne pas enregistrer','#e67e22',     'discard'));
+    btns.appendChild(mkBtn('Annuler',           '#e74c3c',     'cancel'));
+
+    box.append(icon, title, msg, btns);
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+  });
+}
+
+// ─── Fichiers récents ─────────────────────────────────────────────────────────
+function renderRecentMenu(list) {
+  const sub = document.getElementById('recent-submenu');
+  const item = document.getElementById('recent-menu-item');
+  if (!sub) return;
+  sub.innerHTML = '';
+
+  if (!list || !list.length) {
+    sub.innerHTML = '<div class="mdi" style="opacity:.5;font-style:italic;cursor:default">Aucun fichier récent</div>';
+    if (item) item.style.opacity = '.5';
+    return;
+  }
+  if (item) item.style.opacity = '';
+
+  list.forEach(fp => {
+    const name = fp.replace(/\\/g, '/').split('/').pop();
+    const d = document.createElement('div');
+    d.className = 'mdi';
+    d.innerHTML = `<i class="fa-regular fa-file-pdf"></i>
+      <span style="display:flex;flex-direction:column;overflow:hidden">
+        <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</span>
+        <span class="recent-path">${fp}</span>
+      </span>`;
+    d.addEventListener('click', () => openRecentFile(fp));
+    sub.appendChild(d);
+  });
+
+  // Séparateur + Effacer
+  const sep = document.createElement('div'); sep.className = 'msep'; sub.appendChild(sep);
+  const clear = document.createElement('div');
+  clear.className = 'mdi';
+  clear.innerHTML = '<i class="fa-solid fa-trash-can"></i><span style="opacity:.7">Effacer la liste</span>';
+  clear.addEventListener('click', async () => {
+    await window.electronAPI.addToRecent('__clear__');
+  });
+  sub.appendChild(clear);
+}
+
+async function openRecentFile(filePath) {
+  // Fermer le menu
+  document.querySelectorAll('.mi.open').forEach(m => m.classList.remove('open'));
+  if (!window.electronAPI) return;
+  const res = await window.electronAPI.openRecentFile(filePath);
+  if (res && res.error) t('⚠ ' + res.error);
+}
+
 // ─── Integration Electron ─────────────────────────────────────────────────────
 if (window.electronAPI) {
   window.electronAPI.onOpenFile(fileData  => handleOpenWith(fileData));
@@ -4788,6 +5007,17 @@ if (window.electronAPI) {
   initTextTool();
   initDrawingTools();
   window.electronAPI.onMenuAction(action  => menuAction(action));
+
+  // Charger la liste au démarrage
+  window.electronAPI.getRecentFiles().then(renderRecentMenu).catch(() => {});
+
+  // Écouter les mises à jour (après ouverture d'un fichier)
+  window.electronAPI.onRecentUpdated(list => renderRecentMenu(list));
+
+  // Fermeture : sauvegarder si nécessaire
+  if (window.electronAPI.onCloseRequested) {
+    window.electronAPI.onCloseRequested(() => handleAppCloseRequested());
+  }
 }
 
 // ─── Raccourcis clavier ───────────────────────────────────────────────────────

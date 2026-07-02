@@ -185,6 +185,12 @@
         <div class="md">
           <div class="mdi" onclick="menuAction('new')"><i class="fa-regular fa-file"></i><span data-i18n="menu.new">Nouveau</span><span class="kbd">⌘N</span></div>
           <div class="mdi" onclick="openFile()"><i class="fa-regular fa-folder-open"></i><span data-i18n="menu.open">Ouvrir un PDF…</span><span class="kbd">⌘O</span></div>
+          <div class="mdi mdi-sub" id="recent-menu-item">
+            <i class="fa-solid fa-clock-rotate-left"></i><span>Fichiers récents</span><i class="fa-solid fa-chevron-right" style="margin-left:auto;font-size:.6rem;opacity:.5"></i>
+            <div class="md md-sub" id="recent-submenu">
+              <div class="mdi" style="opacity:.5;font-style:italic;cursor:default">Aucun fichier récent</div>
+            </div>
+          </div>
           <div class="mdi" onclick="importImageOCR()"><i class="fa-solid fa-image"></i><span data-i18n="menu.import_ocr">Importer image → PDF (OCR)</span><span style="font-size:.6rem;opacity:.6;margin-left:auto">JPG·PNG·WebP</span></div>
           <div class="msep"></div>
           <div class="mdi" onclick="menuAction('save')"><i class="fa-regular fa-floppy-disk"></i><span data-i18n="menu.save">Enregistrer</span><span class="kbd">⌘S</span></div>
@@ -203,6 +209,7 @@
           <div class="mdi" onclick="redoPDF()"><i class="fa-solid fa-rotate-right"></i><span data-i18n="menu.redo">Rétablir</span><span class="kbd">⇧⌘Z</span></div>
           <div class="msep"></div>
           <div class="mdi" onclick="menuCut()"  ><i class="fa-solid fa-scissors"></i><span data-i18n="menu.cut">Couper</span><span class="kbd">⌘X</span></div>
+          <div class="mdi" onclick="menuCrop()"><i class="fa-solid fa-crop-simple"></i><span>Recadrer la sélection</span></div>
           <div class="mdi" onclick="menuCopy()" ><i class="fa-regular fa-copy"></i><span data-i18n="menu.copy">Copier</span><span class="kbd">⌘C</span></div>
           <div class="mdi" onclick="menuPaste()"><i class="fa-solid fa-paste"></i><span data-i18n="menu.paste">Coller</span><span class="kbd">⌘V</span></div>
           <div class="mdi" onclick="menuPasteExternal()"><i class="fa-solid fa-image"></i><span data-i18n="menu.paste_ext">Collage externe</span></div>

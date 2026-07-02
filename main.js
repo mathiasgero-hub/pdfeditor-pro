@@ -33,6 +33,18 @@ function createWindow() {
     mainWindow.show();
   });
 
+  // ─── Intercepter la fermeture pour proposer la sauvegarde ───────────────────
+  let forceClose = false;
+  mainWindow.on('close', e => {
+    if (forceClose) return; // déjà validé par le renderer
+    e.preventDefault();
+    mainWindow.webContents.send('app-close-requested');
+  });
+  ipcMain.on('confirm-close', () => {
+    forceClose = true;
+    mainWindow.close();
+  });
+
   // ─── Menu contextuel natif (clic droit) ──────────────────────────────────────
   // Electron desactive le menu natif par defaut ; on le restaure avec Copier/Coller
   mainWindow.webContents.on('context-menu', (e, params) => {
@@ -63,6 +75,28 @@ function buildNativeMenu() {
     { label: 'Fichier', submenu: [
       { label: 'Nouveau',           accelerator: 'CmdOrCtrl+N', click: () => mainWindow.webContents.send('menu-action', 'new') },
       { label: 'Ouvrir un PDF...', accelerator: 'CmdOrCtrl+O', click: handleOpenFile },
+      { label: 'Ouvrir un fichier récent', submenu: (() => {
+          const recent = loadRecentFiles();
+          if (!recent.length) return [{ label: 'Aucun fichier récent', enabled: false }];
+          return [
+            ...recent.map(fp => ({
+              label: path.basename(fp),
+              sublabel: fp,
+              click: () => {
+                try { sendFileToRenderer(fp); }
+                catch { dialog.showErrorBox('Fichier introuvable', fp); }
+              }
+            })),
+            { type: 'separator' },
+            { label: 'Effacer la liste', click: () => {
+                saveRecentFiles([]);
+                buildNativeMenu();
+                if (mainWindow) mainWindow.webContents.send('recent-files-updated', []);
+              }
+            }
+          ];
+        })()
+      },
       { type: 'separator' },
       { label: 'Enregistrer',       accelerator: 'CmdOrCtrl+S', click: () => mainWindow.webContents.send('menu-action', 'save') },
       { label: 'Enregistrer sous...', accelerator: 'CmdOrCtrl+Shift+S', click: () => mainWindow.webContents.send('menu-action', 'saveAs') },
@@ -116,6 +150,7 @@ function sendFileToRenderer(filePath) {
     const buffer = fs.readFileSync(filePath);
     const stat   = fs.statSync(filePath);
     mainWindow.webContents.send('open-file', { name: path.basename(filePath), size: stat.size, data: buffer.toString('base64'), filePath });
+    addToRecentFiles(filePath);
   } catch (err) {
     dialog.showErrorBox('Erreur de lecture', 'Impossible de lire le fichier :\n' + err.message);
   }
@@ -226,6 +261,59 @@ ipcMain.handle('ocr-from-data', async (event, { imageData, imageType }) => {
 // ─── IPC : Afficher dans l'explorateur ───────────────────────────────────────
 ipcMain.handle('show-in-folder', async (event, filePath) => { shell.showItemInFolder(filePath); });
 
+
+// ─── Fichiers récents ──────────────────────────────────────────────────────────
+const RECENT_MAX = 10;
+
+function getRecentPath() {
+  return path.join(app.getPath('userData'), 'pdfeditor-recent.json');
+}
+
+function loadRecentFiles() {
+  try { return JSON.parse(fs.readFileSync(getRecentPath(), 'utf-8')); }
+  catch { return []; }
+}
+
+function saveRecentFiles(list) {
+  try { fs.writeFileSync(getRecentPath(), JSON.stringify(list)); } catch {}
+}
+
+function addToRecentFiles(filePath) {
+  let list = loadRecentFiles().filter(p => p !== filePath);
+  list.unshift(filePath);
+  if (list.length > RECENT_MAX) list = list.slice(0, RECENT_MAX);
+  saveRecentFiles(list);
+  // Mettre à jour le sous-menu natif (Mac menu bar)
+  buildNativeMenu();
+  // Envoyer la liste mise à jour au renderer
+  if (mainWindow) mainWindow.webContents.send('recent-files-updated', list);
+}
+
+ipcMain.handle('get-recent-files', () => loadRecentFiles());
+
+ipcMain.handle('add-to-recent', (event, filePath) => {
+  if (filePath === '__clear__') {
+    saveRecentFiles([]);
+    buildNativeMenu();
+    if (mainWindow) mainWindow.webContents.send('recent-files-updated', []);
+  } else {
+    addToRecentFiles(filePath);
+  }
+});
+
+ipcMain.handle('open-recent-file', async (event, filePath) => {
+  try {
+    if (!fs.existsSync(filePath)) {
+      // Retirer le fichier introuvable de la liste
+      const list = loadRecentFiles().filter(p => p !== filePath);
+      saveRecentFiles(list);
+      if (mainWindow) mainWindow.webContents.send('recent-files-updated', list);
+      return { error: 'Fichier introuvable : ' + filePath };
+    }
+    sendFileToRenderer(filePath);
+    return { ok: true };
+  } catch(e) { return { error: e.message }; }
+});
 
 // ─── IPC : Paramètres (stockés dans userData) ─────────────────────────────────
 function getSettingsPath() {
