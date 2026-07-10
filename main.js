@@ -567,14 +567,78 @@ ipcMain.handle('convert-doc-to-pdf', async (event, { filePath, ext }) => {
 });
 
 // ─── IPC : Impression ─────────────────────────────────────────────────────────
-// Dans Electron 43+, did-finish-load ne tire plus de façon fiable pour les PDF
-// chargés en file://, donc on ouvre directement dans la visionneuse système.
+// On génère un HTML qui rend les pages PDF en canvas via PDF.js, puis appelle
+// window.print(). L'impression canvas→HTML fonctionne là où le viewer PDF natif bloque.
 ipcMain.handle('print-pdf', async (event, { pdfData }) => {
-  const tmpPath = path.join(os.tmpdir(), 'pdfeditor_print_' + Date.now() + '.pdf');
-  fs.writeFileSync(tmpPath, Buffer.from(pdfData, 'base64'));
-  const err = await shell.openPath(tmpPath);
-  // Le fichier temporaire reste dans %TEMP% et sera nettoyé par l'OS
-  return { ok: !err, reason: err || '' };
+  const stamp = Date.now();
+  const tmpHtml = path.join(os.tmpdir(), `pdfeditor_print_${stamp}.html`);
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#666; font-family:sans-serif; }
+  #status { color:#fff; padding:12px; font-size:14px; }
+  canvas { display:block; margin:12px auto; box-shadow:0 2px 8px rgba(0,0,0,.5); }
+  @media print {
+    body { background:white; }
+    #status { display:none; }
+    canvas { margin:0; box-shadow:none; page-break-after:always; width:100% !important; height:auto !important; }
+    canvas:last-child { page-break-after:avoid; }
+  }
+</style>
+</head><body>
+<div id="status">Chargement du document…</div>
+<div id="pages"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+<script>
+(async () => {
+  try {
+    const PDFJS = pdfjsLib;
+    PDFJS.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+    const b64 = '${pdfData}';
+    const raw = atob(b64);
+    const arr = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+
+    const pdf = await PDFJS.getDocument({ data: arr }).promise;
+    const container = document.getElementById('pages');
+    document.getElementById('status').textContent =
+      'Rendu de ' + pdf.numPages + ' page(s)…';
+
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const vp = page.getViewport({ scale: 2 }); // 2× pour qualité impression
+      const canvas = document.createElement('canvas');
+      canvas.width  = vp.width;
+      canvas.height = vp.height;
+      canvas.style.width  = (vp.width  / 2) + 'px';
+      canvas.style.height = (vp.height / 2) + 'px';
+      container.appendChild(canvas);
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+      document.getElementById('status').textContent =
+        'Page ' + p + '/' + pdf.numPages + ' rendue';
+    }
+
+    document.getElementById('status').textContent = '';
+    setTimeout(() => window.print(), 300);
+  } catch(e) {
+    document.getElementById('status').textContent = 'Erreur : ' + e.message;
+  }
+})();
+</script>
+</body></html>`;
+
+  fs.writeFileSync(tmpHtml, html, 'utf8');
+
+  // Ouvrir dans le navigateur système (Edge/Chrome) = dialog d'impression complet
+  // avec aperçu, marges, taille de papier, etc.
+  await shell.openExternal('file:///' + tmpHtml.replace(/\\/g, '/'));
+
+  // Nettoyer après 60s (le navigateur a eu le temps de charger le fichier)
+  setTimeout(() => { try { fs.unlinkSync(tmpHtml); } catch {} }, 60000);
+  return { ok: true };
 });
 
 

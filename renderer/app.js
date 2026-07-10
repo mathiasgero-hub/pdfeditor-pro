@@ -3595,7 +3595,7 @@ async function redoPDF() {
 // ══════════════════════════════════════════════════════════════════════════════
 async function printCurrentPDF() {
   if (!currentPdfData) { t('Aucun document à imprimer'); return; }
-  t('Ouverture dans la visionneuse PDF — utilisez Ctrl+P pour imprimer.');
+  t('Ouverture de la boîte de dialogue d\'impression…');
   try {
     const res = await window.electronAPI.printPDF(currentPdfData);
     if (!res.ok) t('Erreur impression : ' + res.reason);
