@@ -427,6 +427,129 @@ ipcMain.handle('open-image-dialog', async () => {
   return { name: path.basename(fp), data, type: ext === 'png' ? 'png' : 'jpeg', ext };
 });
 
+// ─── IPC : Importer fichier (image ou document) ──────────────────────────────
+const IMAGE_EXTS = ['jpg','jpeg','png','webp','bmp','tiff','tif'];
+const DOC_EXTS   = ['docx','doc','txt','md','rtf','html','htm','odt'];
+
+ipcMain.handle('open-import-dialog', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Importer un fichier',
+    filters: [
+      { name: 'Tous les formats', extensions: [...IMAGE_EXTS, ...DOC_EXTS] },
+      { name: 'Images',           extensions: IMAGE_EXTS },
+      { name: 'Documents Word',   extensions: ['docx','doc'] },
+      { name: 'Texte & Markdown', extensions: ['txt','md','rtf'] },
+      { name: 'Web (HTML)',        extensions: ['html','htm'] },
+    ],
+    properties: ['openFile']
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  const fp  = result.filePaths[0];
+  const ext = path.extname(fp).slice(1).toLowerCase();
+  if (IMAGE_EXTS.includes(ext)) {
+    const data = fs.readFileSync(fp).toString('base64');
+    return { type: 'image', imageData: data,
+             imageType: ext === 'png' ? 'png' : 'jpeg',
+             imageName: path.basename(fp) };
+  }
+  return { type: 'document', filePath: fp, ext, name: path.basename(fp) };
+});
+
+function _escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function _mdToHtml(md) {
+  return md
+    .split('\n')
+    .map(l => {
+      if (/^### /.test(l)) return '<h3>' + _escHtml(l.slice(4)) + '</h3>';
+      if (/^## /.test(l))  return '<h2>' + _escHtml(l.slice(3)) + '</h2>';
+      if (/^# /.test(l))   return '<h1>' + _escHtml(l.slice(2)) + '</h1>';
+      if (/^\*\s/.test(l)||/^- /.test(l)) return '<li>' + _escHtml(l.slice(2)) + '</li>';
+      if (l.trim() === '')  return '<br>';
+      return '<p>' + _escHtml(l) + '</p>';
+    })
+    .join('\n');
+}
+
+ipcMain.handle('convert-doc-to-pdf', async (event, { filePath, ext }) => {
+  try {
+    let html = '';
+    const baseName = path.basename(filePath, path.extname(filePath));
+
+    if (ext === 'docx' || ext === 'doc') {
+      const mammoth = require('mammoth');
+      const res = await mammoth.convertToHtml({ path: filePath });
+      html = res.value;
+
+    } else if (ext === 'txt') {
+      const text = fs.readFileSync(filePath, 'utf8');
+      html = text.split('\n').map(l => '<p style="margin:0;min-height:1.4em">' + _escHtml(l) + '</p>').join('');
+
+    } else if (ext === 'md') {
+      html = _mdToHtml(fs.readFileSync(filePath, 'utf8'));
+
+    } else if (ext === 'rtf') {
+      // Extraction du texte brut (suppression des codes RTF)
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const plain = raw
+        .replace(/\{\\[^{}]*\}/g, '')
+        .replace(/\\[a-z]+\-?\d*\s?/g, ' ')
+        .replace(/[{}\\]/g, '')
+        .replace(/\r\n|\r/g, '\n');
+      html = plain.split('\n').map(l => '<p style="margin:0;min-height:1.4em">' + _escHtml(l.trim()) + '</p>').join('');
+
+    } else if (ext === 'html' || ext === 'htm') {
+      html = fs.readFileSync(filePath, 'utf8');
+      // HTML complet : utiliser directement
+      const tmpHtml = path.join(os.tmpdir(), 'pdfeditor_import_' + Date.now() + '.html');
+      fs.writeFileSync(tmpHtml, html, 'utf8');
+      const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false, contextIsolation: true } });
+      await new Promise((res, rej) => {
+        win.webContents.once('did-finish-load', res);
+        win.webContents.once('did-fail-load', rej);
+        win.loadFile(tmpHtml);
+      });
+      const pdf = await win.webContents.printToPDF({ printBackground: true, pageSize: 'A4' });
+      win.destroy();
+      try { fs.unlinkSync(tmpHtml); } catch {}
+      return { data: Buffer.from(pdf).toString('base64'), name: baseName + '.pdf' };
+
+    } else if (ext === 'odt') {
+      return { error: 'Format ODT non supporté directement. Exportez en .docx depuis LibreOffice.' };
+    } else {
+      return { error: 'Format non supporté : ' + ext };
+    }
+
+    // Envelopper dans une page HTML complète
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+      body{font-family:Arial,sans-serif;font-size:12pt;line-height:1.6;margin:2cm}
+      p{margin:0 0 .4em}h1{font-size:2em;margin:.6em 0 .3em}h2{font-size:1.5em;margin:.5em 0 .25em}
+      h3{font-size:1.2em;margin:.4em 0 .2em}li{margin:.2em 0}
+      table{border-collapse:collapse;width:100%;margin:.5em 0}
+      td,th{border:1px solid #ccc;padding:4px 8px;text-align:left}
+      img{max-width:100%;height:auto}
+    </style></head><body>${html}</body></html>`;
+
+    const tmpHtml = path.join(os.tmpdir(), 'pdfeditor_import_' + Date.now() + '.html');
+    fs.writeFileSync(tmpHtml, fullHtml, 'utf8');
+
+    const win = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false, contextIsolation: true } });
+    await new Promise((res, rej) => {
+      win.webContents.once('did-finish-load', res);
+      win.webContents.once('did-fail-load', (_, code, desc) => rej(new Error(desc)));
+      win.loadFile(tmpHtml);
+    });
+    const pdf = await win.webContents.printToPDF({ printBackground: true, pageSize: 'A4' });
+    win.destroy();
+    try { fs.unlinkSync(tmpHtml); } catch {}
+
+    return { data: Buffer.from(pdf).toString('base64'), name: baseName + '.pdf' };
+  } catch (e) {
+    return { error: e.message };
+  }
+});
+
 // ─── IPC : Impression ─────────────────────────────────────────────────────────
 ipcMain.handle('print-pdf', async (event, { pdfData }) => {
   const tmpPath = path.join(os.tmpdir(), 'pdfeditor_print_' + Date.now() + '.pdf');

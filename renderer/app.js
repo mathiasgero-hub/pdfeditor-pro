@@ -2707,8 +2707,45 @@ async function testGoogleVision() {
   }
 }
 
-async function importImageOCR() {
+// ─── Import universel : image (OCR→PDF) ou document (Word/txt/md/rtf/html→PDF) ─
+async function importFile() {
   if (!window.electronAPI) { t("Disponible uniquement dans l'application Electron"); return; }
+  const result = await window.electronAPI.openImportDialog();
+  if (!result) return;
+
+  if (result.type === 'image') {
+    // Réutiliser le pipeline OCR existant avec les données déjà lues
+    await _runOcrPipeline(result);
+  } else {
+    // Document texte/Word → PDF via BrowserWindow printToPDF
+    const loadBar   = document.getElementById('load-bar');
+    const loadInner = document.getElementById('load-inner');
+    const loadLabel = document.getElementById('load-label');
+    loadBar.style.display = 'block';
+    loadInner.style.width = '10%';
+    loadLabel.textContent = 'Conversion en cours…';
+
+    const res = await window.electronAPI.convertDocToPdf(result.filePath, result.ext);
+    if (res.error) {
+      loadBar.style.display = 'none';
+      t('Erreur : ' + res.error);
+      return;
+    }
+    loadInner.style.width = '90%';
+    loadLabel.textContent = 'Ouverture du PDF…';
+    await handleOpenWith({ name: res.name, size: Math.round(res.data.length * .75), data: res.data, filePath: null });
+    loadBar.style.display = 'none';
+    t('Document importé : ' + res.name);
+  }
+}
+
+async function importImageOCR() {
+  // Redirige vers le sélecteur unifié (images + documents)
+  return importFile();
+}
+
+async function _runOcrPipeline(imgData) {
+  if (!window.electronAPI) return;
 
   document.getElementById('drop-zone').style.display = 'none';
   const loadBar   = document.getElementById('load-bar');
@@ -2716,7 +2753,7 @@ async function importImageOCR() {
   const loadLabel = document.getElementById('load-label');
   loadBar.style.display = 'block';
   loadInner.style.width = '3%';
-  loadLabel.textContent = "Selection de l'image...";
+  loadLabel.textContent = "Traitement de l'image...";
 
   // Lire les preferences OCR
   const settings  = window.electronAPI ? (await window.electronAPI.getSettings() || {}) : {};
@@ -2724,7 +2761,6 @@ async function importImageOCR() {
 
   window.electronAPI.removeAllListeners('ocr-progress');
   if (!useGoogle) {
-    // Progression Tesseract uniquement (Google Vision = requete unique sans etapes)
     window.electronAPI.onOcrProgress(({ status, progress }) => {
       loadInner.style.width = Math.round(20 + progress * 55) + '%';
       loadLabel.textContent = status;
@@ -2732,10 +2768,8 @@ async function importImageOCR() {
   }
 
   try {
-    // ── Etape 1 : Image originale (couleurs, pleine resolution) ─────────────────
     loadInner.style.width = '5%';
     loadLabel.textContent = "Lecture de l'image...";
-    const imgData = await window.electronAPI.getImageData();
     if (!imgData) { loadBar.style.display = 'none'; document.getElementById('drop-zone').style.display = 'flex'; return; }
 
     const origDims = await getImageDimensions(imgData.imageData, imgData.imageType);

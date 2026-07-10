@@ -63,6 +63,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ─── Chiffrement ─────────────────────────────────────────────────────────────
   encryptPDF: (opts) => ipcRenderer.invoke('encrypt-pdf', opts),
 
+  // ─── Import universel (image ou document) ────────────────────────────────────
+  openImportDialog: ()              => ipcRenderer.invoke('open-import-dialog'),
+  convertDocToPdf:  (filePath, ext) => ipcRenderer.invoke('convert-doc-to-pdf', { filePath, ext }),
+
   // ─── Signature : ouvrir image ────────────────────────────────────────────────
   openImageForSig: () => ipcRenderer.invoke('open-image-for-sig'),
 
