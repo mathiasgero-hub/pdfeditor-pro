@@ -602,7 +602,8 @@ function makeTab(overrides) {
     pdfDoc: null, baseFitScale: 1, zoomLevel: 100, renderGen: 0, bookmarks: [],
     thumbCache: null,   // tableau de data URLs — vignettes pré-rendues
     pagesNode: null,    // div détaché contenant les pages rendues
-    scrollTop: 0,       // position de scroll sauvegardée
+    scrollTop: 0,       // position de scroll du viewport principal sauvegardée
+    thumbScrollTop: 0,  // position de scroll du panneau miniatures sauvegardée
     savedData: null     // snapshot des données au dernier enregistrement (dirty tracking)
   }, overrides);
 }
@@ -622,6 +623,9 @@ function syncActiveTab() {
   const pagesEl = document.getElementById('pdf-pages');
   if (pagesEl) {
     tab.scrollTop = vpEl ? vpEl.scrollTop : 0; // #pdf-viewport est le conteneur scrollable
+    // Sauvegarder aussi le scroll du panneau miniatures (.pcnt)
+    const pcnt = document.querySelector('#lp .pcnt');
+    tab.thumbScrollTop = pcnt ? pcnt.scrollTop : 0;
     // Déplacer les pages dans le nœud détaché de l'onglet
     if (!tab.pagesNode) tab.pagesNode = document.createElement('div');
     while (pagesEl.firstChild) tab.pagesNode.appendChild(pagesEl.firstChild);
@@ -703,9 +707,13 @@ async function switchTab(idx) {
     // Réattacher instantanément (aucun re-décodage PDF)
     pagesEl.style.display = 'flex';
     while (newTab.pagesNode.firstChild) pagesEl.appendChild(newTab.pagesNode.firstChild);
-    // Restaurer le scroll sur le viewport (conteneur scrollable), pas sur pdf-pages
-    const vpEl = document.getElementById('pdf-viewport');
-    if (vpEl) requestAnimationFrame(() => { vpEl.scrollTop = newTab.scrollTop || 0; });
+    // Restaurer le scroll principal et celui des miniatures après layout
+    requestAnimationFrame(() => {
+      const vpEl = document.getElementById('pdf-viewport');
+      if (vpEl) vpEl.scrollTop = newTab.scrollTop || 0;
+      const pcnt = document.querySelector('#lp .pcnt');
+      if (pcnt) pcnt.scrollTop = newTab.thumbScrollTop || 0;
+    });
   } else {
     await renderMainPages(currentPdfDoc, baseFitScale * zoomLevel / 100, null, null);
   }
