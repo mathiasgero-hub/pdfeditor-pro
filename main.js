@@ -9,9 +9,24 @@ const https = require('https');
 const http  = require('http');
 
 let mainWindow;
-let pendingFilePath = null; // fichier à ouvrir dès que le renderer est prêt
+let pendingFilePath  = null;  // fichier à ouvrir dès que les deux conditions sont réunies
+let _windowReady     = false; // ready-to-show a tiré (fenêtre visible)
+let _rendererReady   = false; // renderer-ready a tiré (JS initialisé)
+
+// N'envoie le fichier en attente que quand la fenêtre EST visible ET le renderer EST prêt.
+// Évite le bug « pages blanches » au démarrage à froid : requestAnimationFrame ne tire pas
+// tant que la fenêtre est cachée (show:false), l'opacity du viewport restait à 0.
+function _trySendPendingFile() {
+  if (_windowReady && _rendererReady && pendingFilePath) {
+    const fp = pendingFilePath;
+    pendingFilePath = null;
+    sendFileToRenderer(fp);
+  }
+}
 
 function createWindow() {
+  _windowReady   = false;
+  _rendererReady = false;
   mainWindow = new BrowserWindow({
     width:  1440,
     height: 900,
@@ -28,9 +43,12 @@ function createWindow() {
   });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
-  // Afficher la fenêtre seulement quand elle est visuellement prête
+  // Afficher la fenêtre seulement quand elle est visuellement prête,
+  // puis tenter d'envoyer le fichier en attente (si le renderer est déjà prêt).
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    _windowReady = true;
+    _trySendPendingFile();
   });
 
   // ─── Intercepter la fermeture pour proposer la sauvegarde ───────────────────
@@ -1085,11 +1103,8 @@ function getPdfFromArgv(argv) {
 // ─── Signal renderer-ready : le renderer prévient main qu'il est initialisé ──
 // Cela évite tout timeout arbitraire pour envoyer le fichier au démarrage.
 ipcMain.handle('renderer-ready', () => {
-  if (pendingFilePath) {
-    const fp = pendingFilePath;
-    pendingFilePath = null;
-    sendFileToRenderer(fp);
-  }
+  _rendererReady = true;
+  _trySendPendingFile();
 });
 
 // ─── Single-instance lock ─────────────────────────────────────────────────────
