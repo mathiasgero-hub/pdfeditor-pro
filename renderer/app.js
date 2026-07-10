@@ -1237,22 +1237,6 @@ async function renderMainPages(pdf, scale, loadInner, loadLabel) {
     wrap.dataset.page = i;
     wrap.style.cssText = 'position:relative;flex-shrink:0;width:' + vp.width + 'px;height:' + vp.height + 'px';
 
-    // ── Indicateur de page sticky ─────────────────────────────────────────────
-    // position:sticky → reste visible en haut du viewport pendant tout le scroll,
-    // même à 300% où la page fait ~3100 px de haut (label bas invisible).
-    // margin-bottom négatif : 0 hauteur nette dans le flux → le canvas démarre à y=0.
-    const numSticky = document.createElement('div');
-    numSticky.className = 'page-num-sticky';
-    numSticky.style.cssText =
-      'position:sticky;top:24px;z-index:500;pointer-events:none;' +
-      'height:22px;margin-bottom:-22px;' +          // 0 impact sur le flux
-      'display:flex;align-items:center;justify-content:center;' +
-      'font-family:\'Cinzel\',serif;font-size:.65rem;letter-spacing:.08em;' +
-      'color:var(--gold);background:rgba(22,18,10,.82);' +
-      'border-radius:0 0 8px 8px;padding:0 10px;width:fit-content;margin-left:auto;margin-right:auto;';
-    numSticky.textContent = 'Page ' + i + ' / ' + np;
-    wrap.appendChild(numSticky);
-
     // Canvas PDF
     const canvas = document.createElement('canvas');
     canvas.width  = vp.width;
