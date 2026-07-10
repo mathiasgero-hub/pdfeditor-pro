@@ -10,20 +10,8 @@ permissions:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          - os: windows-latest
-            name: Windows
-          - os: macos-latest
-            name: Mac
-          - os: ubuntu-latest
-            name: Linux
-
-    runs-on: ${{ matrix.os }}
-    name: Build ${{ matrix.name }}
+    runs-on: windows-latest
+    name: Build Windows
 
     steps:
       - name: Checkout code
@@ -46,14 +34,11 @@ jobs:
       - name: Build & publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --publish always
+        run: npx electron-builder --win --publish always
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist-${{ matrix.os }}
-          path: |
-            dist/*.exe
-            dist/*.dmg
-            dist/*.AppImage
+          name: dist-windows
+          path: dist/*.exe
           if-no-files-found: ignore
