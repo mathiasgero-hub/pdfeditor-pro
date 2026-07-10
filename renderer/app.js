@@ -2713,7 +2713,11 @@ async function importFile() {
   const result = await window.electronAPI.openImportDialog();
   if (!result) return;
 
-  if (result.type === 'image') {
+  if (result.type === 'gdoc') {
+    // Google Doc : raccourci local — ne contient pas le document
+    // On propose l'export PDF direct ou l'ouverture dans le navigateur
+    await _showGdocImportDialog(result);
+  } else if (result.type === 'image') {
     // Réutiliser le pipeline OCR existant avec les données déjà lues
     await _runOcrPipeline(result);
   } else {
@@ -2737,6 +2741,42 @@ async function importFile() {
     loadBar.style.display = 'none';
     t('Document importé : ' + res.name);
   }
+}
+
+// ─── Google Docs : dialogue d'aide à l'export ────────────────────────────────
+function _showGdocImportDialog({ url, exportUrl, name }) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:20000;display:flex;align-items:center;justify-content:center';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--bg-panel);border:1px solid var(--gold);border-top:3px solid var(--gold);border-radius:6px;padding:24px 28px;min-width:340px;max-width:480px;font-size:.85rem;color:var(--txt)';
+    box.innerHTML = `
+      <div style="font-family:Cinzel,serif;color:var(--gold);margin-bottom:10px;font-size:.95rem">
+        <i class="fa-brands fa-google-drive"></i> Google Docs — « ${name} »
+      </div>
+      <p style="color:var(--txt2);margin:0 0 14px;line-height:1.5">
+        Les fichiers <b>.gdoc</b> sont des raccourcis vers Google Drive.<br>
+        Le document n'est pas stocké localement.<br><br>
+        Pour l'importer dans PDFEditor Pro :
+      </p>
+      <ol style="color:var(--txt2);margin:0 0 18px;padding-left:18px;line-height:1.9">
+        <li>Ouvrez le document dans Google Docs</li>
+        <li>Fichier → Télécharger → <b>PDF</b> ou <b>Word (.docx)</b></li>
+        <li>Importez le fichier téléchargé ici</li>
+      </ol>
+      <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+        ${url ? `<div class="mbtn" id="gdoc-open-btn" style="background:var(--gold);color:#1a1209;border-color:var(--gold)"><i class="fa-brands fa-google-drive"></i> Ouvrir dans Google Docs</div>` : ''}
+        <div class="mbtn" id="gdoc-close-btn"><i class="fa-solid fa-xmark"></i> Fermer</div>
+      </div>`;
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+    box.querySelector('#gdoc-close-btn').addEventListener('click', () => { ov.remove(); resolve(); });
+    const openBtn = box.querySelector('#gdoc-open-btn');
+    if (openBtn) openBtn.addEventListener('click', () => {
+      window.open(url, '_blank');
+      ov.remove(); resolve();
+    });
+  });
 }
 
 async function importImageOCR() {

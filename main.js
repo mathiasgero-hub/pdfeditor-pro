@@ -429,7 +429,7 @@ ipcMain.handle('open-image-dialog', async () => {
 
 // ─── IPC : Importer fichier (image ou document) ──────────────────────────────
 const IMAGE_EXTS = ['jpg','jpeg','png','webp','bmp','tiff','tif'];
-const DOC_EXTS   = ['docx','doc','txt','md','rtf','html','htm','odt'];
+const DOC_EXTS   = ['docx','doc','txt','md','rtf','html','htm','odt','gdoc','gsheet','gslides'];
 
 ipcMain.handle('open-import-dialog', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -438,6 +438,7 @@ ipcMain.handle('open-import-dialog', async () => {
       { name: 'Tous les formats', extensions: [...IMAGE_EXTS, ...DOC_EXTS] },
       { name: 'Images',           extensions: IMAGE_EXTS },
       { name: 'Documents Word',   extensions: ['docx','doc'] },
+      { name: 'Google Docs',      extensions: ['gdoc','gsheet','gslides'] },
       { name: 'Texte & Markdown', extensions: ['txt','md','rtf'] },
       { name: 'Web (HTML)',        extensions: ['html','htm'] },
     ],
@@ -446,6 +447,21 @@ ipcMain.handle('open-import-dialog', async () => {
   if (result.canceled || !result.filePaths.length) return null;
   const fp  = result.filePaths[0];
   const ext = path.extname(fp).slice(1).toLowerCase();
+
+  // ── Google Docs raccourci (.gdoc / .gsheet / .gslides) ──────────────────────
+  if (['gdoc','gsheet','gslides'].includes(ext)) {
+    try {
+      const content = JSON.parse(fs.readFileSync(fp, 'utf8'));
+      const url = content.url || content.url_path || '';
+      if (url) {
+        // Construire l'URL d'export direct en PDF
+        const exportUrl = url.replace(/\/edit.*$/, '/export?format=pdf');
+        return { type: 'gdoc', url, exportUrl, name: path.basename(fp, '.' + ext) };
+      }
+    } catch {}
+    return { type: 'gdoc', url: '', exportUrl: '', name: path.basename(fp, '.' + ext) };
+  }
+
   if (IMAGE_EXTS.includes(ext)) {
     const data = fs.readFileSync(fp).toString('base64');
     return { type: 'image', imageData: data,
