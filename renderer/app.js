@@ -641,6 +641,8 @@ function setActiveTab(idx) {
   baseFitScale = tab.baseFitScale; zoomLevel = tab.zoomLevel; renderGen = tab.renderGen;
 }
 
+let _tabDragSrcIdx = -1; // index de l'onglet en cours de déplacement
+
 function renderTabBar() {
   const list = document.getElementById('tab-list');
   if (!list) return;
@@ -648,12 +650,51 @@ function renderTabBar() {
   tabs.forEach((tab, idx) => {
     const el = document.createElement('div');
     el.className = 'doc-tab' + (idx === activeTabIdx ? ' active' : '');
+    el.draggable = true;
     const safeName = (tab.name || 'Nouveau').replace(/</g, '&lt;');
     const dot = isTabDirty(tab) ? '<span title="Modifications non enregistrées" style="color:var(--gold);margin-left:2px">●</span>' : '';
     el.innerHTML = '<i class="fa-regular fa-file-pdf"></i><span class="tab-name">' + safeName + dot +
       '</span><span class="doc-tab-close" title="Fermer">×</span>';
+
     el.querySelector('.doc-tab-close').addEventListener('click', e => { e.stopPropagation(); closeTab(idx); });
     el.addEventListener('click', () => { if (idx !== activeTabIdx) switchTab(idx); });
+
+    // ── Drag-and-drop pour réordonner ──────────────────────────────────────────
+    el.addEventListener('dragstart', e => {
+      _tabDragSrcIdx = idx;
+      e.dataTransfer.effectAllowed = 'move';
+      setTimeout(() => el.style.opacity = '0.4', 0);
+    });
+    el.addEventListener('dragend', () => {
+      el.style.opacity = '';
+      document.querySelectorAll('.doc-tab').forEach(t => t.classList.remove('tab-drag-over'));
+    });
+    el.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      document.querySelectorAll('.doc-tab').forEach(t => t.classList.remove('tab-drag-over'));
+      if (idx !== _tabDragSrcIdx) el.classList.add('tab-drag-over');
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('tab-drag-over'));
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      el.classList.remove('tab-drag-over');
+      const src = _tabDragSrcIdx;
+      _tabDragSrcIdx = -1;
+      if (src < 0 || src === idx) return;
+      syncActiveTab();
+      // Mémoriser l'onglet actif avant réorganisation
+      const activeTab = tabs[activeTabIdx];
+      // Déplacer src → idx
+      const [moved] = tabs.splice(src, 1);
+      const dest = src < idx ? idx - 1 : idx;
+      tabs.splice(dest, 0, moved);
+      // Retrouver le nouvel index de l'onglet actif
+      activeTabIdx = tabs.indexOf(activeTab);
+      if (activeTabIdx < 0) activeTabIdx = 0;
+      renderTabBar();
+    });
+
     list.appendChild(el);
   });
 }
