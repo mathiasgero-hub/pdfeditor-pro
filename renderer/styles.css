@@ -393,7 +393,7 @@ body{
 .doc-tab span.tab-name{overflow:hidden;text-overflow:ellipsis;max-width:130px}
 .doc-tab:hover{color:var(--gold-l);background:rgba(200,150,46,.06)}
 .doc-tab.active{color:var(--gold);border-bottom-color:var(--gold);background:rgba(200,150,46,.1)}
-.doc-tab-close{opacity:.4;font-size:.8rem;flex-shrink:0;padding:1px 3px;border-radius:2px;line-height:1;transition:all .15s}
+.doc-tab-close{opacity:.7;font-size:1rem;flex-shrink:0;padding:1px 3px;border-radius:2px;line-height:1;transition:all .15s;color:#fff}
 .doc-tab-close:hover{opacity:1;background:rgba(180,60,60,.3);color:#ff8080}
 .doc-tab.tab-drag-over{border-left:2px solid var(--gold);background:rgba(200,150,46,.18);color:var(--gold)}
 .tab-add-btn{padding:5px 12px;color:var(--gold);cursor:pointer;font-size:.95rem;opacity:.5;transition:opacity .15s;flex-shrink:0}
