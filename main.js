@@ -567,30 +567,14 @@ ipcMain.handle('convert-doc-to-pdf', async (event, { filePath, ext }) => {
 });
 
 // ─── IPC : Impression ─────────────────────────────────────────────────────────
+// Dans Electron 43+, did-finish-load ne tire plus de façon fiable pour les PDF
+// chargés en file://, donc on ouvre directement dans la visionneuse système.
 ipcMain.handle('print-pdf', async (event, { pdfData }) => {
   const tmpPath = path.join(os.tmpdir(), 'pdfeditor_print_' + Date.now() + '.pdf');
   fs.writeFileSync(tmpPath, Buffer.from(pdfData, 'base64'));
-
-  return new Promise((resolve) => {
-    const printWin = new BrowserWindow({
-      show: false,
-      webPreferences: { plugins: true, nodeIntegration: false }
-    });
-    printWin.loadURL('file://' + tmpPath);
-    printWin.webContents.once('did-finish-load', () => {
-      printWin.webContents.print({ silent: false, printBackground: true }, (success, reason) => {
-        printWin.destroy();
-        try { fs.unlinkSync(tmpPath); } catch {}
-        resolve({ ok: success, reason });
-      });
-    });
-    // Fallback si le chargement échoue
-    printWin.webContents.once('did-fail-load', () => {
-      printWin.destroy();
-      shell.openPath(tmpPath); // ouvre dans le lecteur système
-      resolve({ ok: false, reason: 'load-failed' });
-    });
-  });
+  const err = await shell.openPath(tmpPath);
+  // Le fichier temporaire reste dans %TEMP% et sera nettoyé par l'OS
+  return { ok: !err, reason: err || '' };
 });
 
 

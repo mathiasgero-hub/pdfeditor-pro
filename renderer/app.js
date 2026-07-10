@@ -3595,9 +3595,10 @@ async function redoPDF() {
 // ══════════════════════════════════════════════════════════════════════════════
 async function printCurrentPDF() {
   if (!currentPdfData) { t('Aucun document à imprimer'); return; }
-  t('Ouverture pour impression...');
+  t('Ouverture dans la visionneuse PDF — utilisez Ctrl+P pour imprimer.');
   try {
-    await window.electronAPI.printPDF(currentPdfData);
+    const res = await window.electronAPI.printPDF(currentPdfData);
+    if (!res.ok) t('Erreur impression : ' + res.reason);
   } catch(e) { t('Erreur impression : ' + e.message); }
 }
 
