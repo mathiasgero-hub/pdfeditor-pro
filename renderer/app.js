@@ -617,10 +617,11 @@ function syncActiveTab() {
   tab.pdfDoc = currentPdfDoc; tab.name = currentPdfName; tab.size = currentPdfSize;
   tab.data = currentPdfData; tab.filePath = currentFilePath;
   tab.baseFitScale = baseFitScale; tab.zoomLevel = zoomLevel; tab.renderGen = renderGen;
-  // Sauvegarder la position de scroll et détacher les pages du DOM
+  // Sauvegarder la position de scroll (sur le viewport, seul élément scrollable) et détacher les pages
+  const vpEl    = document.getElementById('pdf-viewport');
   const pagesEl = document.getElementById('pdf-pages');
   if (pagesEl) {
-    tab.scrollTop = pagesEl.scrollTop;
+    tab.scrollTop = vpEl ? vpEl.scrollTop : 0; // #pdf-viewport est le conteneur scrollable
     // Déplacer les pages dans le nœud détaché de l'onglet
     if (!tab.pagesNode) tab.pagesNode = document.createElement('div');
     while (pagesEl.firstChild) tab.pagesNode.appendChild(pagesEl.firstChild);
@@ -702,7 +703,9 @@ async function switchTab(idx) {
     // Réattacher instantanément (aucun re-décodage PDF)
     pagesEl.style.display = 'flex';
     while (newTab.pagesNode.firstChild) pagesEl.appendChild(newTab.pagesNode.firstChild);
-    pagesEl.scrollTop = newTab.scrollTop || 0;
+    // Restaurer le scroll sur le viewport (conteneur scrollable), pas sur pdf-pages
+    const vpEl = document.getElementById('pdf-viewport');
+    if (vpEl) requestAnimationFrame(() => { vpEl.scrollTop = newTab.scrollTop || 0; });
   } else {
     await renderMainPages(currentPdfDoc, baseFitScale * zoomLevel / 100, null, null);
   }
