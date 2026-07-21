@@ -2381,21 +2381,37 @@ function zoom(dir) { zoomTo(zoomLevel + dir * 20); }
 
 let doublePageMode = false;
 
-// Adapter à la page : ajuste l'échelle pour que la page 1 remplisse #canvas
-async function fitToPage() {
+// Adapter à la largeur : la page remplit toute la largeur du viewport
+async function fitWidth() {
   if (!currentPdfDoc) { t("Ouvrez un PDF d'abord"); return; }
-  const canvasEl = document.getElementById('pdf-viewport');
-  const avail    = canvasEl.clientWidth - 48; // 24px marge de chaque côté
-  const page1    = await currentPdfDoc.getPage(1);
-  const vp1      = page1.getViewport({ scale: 1 });
-  // En mode double page on divise par 2 (moins un gap)
-  const targetW  = doublePageMode ? (avail / 2 - 12) : avail;
-  baseFitScale   = targetW / vp1.width;
-  zoomLevel      = 100;
-  document.getElementById('zoom-val').textContent = 'Adapté';
+  const vpEl  = document.getElementById('pdf-viewport');
+  const avail = vpEl.clientWidth - 48; // 24px marge chaque côté
+  const page1 = await currentPdfDoc.getPage(1);
+  const vp1   = page1.getViewport({ scale: 1 });
+  const targetW = doublePageMode ? (avail / 2 - 12) : avail;
+  baseFitScale  = targetW / vp1.width;
+  zoomLevel     = 100;
+  document.getElementById('zoom-val').textContent = 'Larg.';
   if (tabs[activeTabIdx]) { tabs[activeTabIdx].baseFitScale = baseFitScale; tabs[activeTabIdx].zoomLevel = zoomLevel; }
   await renderMainPages(currentPdfDoc, baseFitScale, null, null);
 }
+
+// Adapter à la hauteur : la page remplit toute la hauteur du viewport
+async function fitHeight() {
+  if (!currentPdfDoc) { t("Ouvrez un PDF d'abord"); return; }
+  const vpEl   = document.getElementById('pdf-viewport');
+  const availH = vpEl.clientHeight - 24;
+  const page1  = await currentPdfDoc.getPage(1);
+  const vp1    = page1.getViewport({ scale: 1 });
+  baseFitScale = availH / vp1.height;
+  zoomLevel    = 100;
+  document.getElementById('zoom-val').textContent = 'Haut.';
+  if (tabs[activeTabIdx]) { tabs[activeTabIdx].baseFitScale = baseFitScale; tabs[activeTabIdx].zoomLevel = zoomLevel; }
+  await renderMainPages(currentPdfDoc, baseFitScale, null, null);
+}
+
+// Adapter à la page (alias fitWidth, conservé pour le menu)
+async function fitToPage() { await fitWidth(); }
 
 // Page double : affiche 2 pages côte à côte
 function toggleDoublePage() {
