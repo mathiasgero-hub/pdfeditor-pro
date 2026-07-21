@@ -34,12 +34,12 @@
       "assets/**/*"
     ],
     "fileAssociations": [
-      {
-        "ext": "pdf",
-        "name": "PDF Document",
-        "description": "Ouvrir avec PDFEditor Pro",
-        "role": "Editor"
-      }
+      { "ext": "pdf",  "name": "PDF Document", "description": "Ouvrir avec PDFEditor Pro", "role": "Editor" },
+      { "ext": "jpg",  "name": "JPEG Image",   "description": "Ouvrir avec PDFEditor Pro", "role": "Viewer" },
+      { "ext": "jpeg", "name": "JPEG Image",   "description": "Ouvrir avec PDFEditor Pro", "role": "Viewer" },
+      { "ext": "png",  "name": "PNG Image",    "description": "Ouvrir avec PDFEditor Pro", "role": "Viewer" },
+      { "ext": "webp", "name": "WebP Image",   "description": "Ouvrir avec PDFEditor Pro", "role": "Viewer" },
+      { "ext": "bmp",  "name": "BMP Image",    "description": "Ouvrir avec PDFEditor Pro", "role": "Viewer" }
     ],
     "win": {
       "target": [

@@ -163,12 +163,27 @@ async function handleOpenFile() {
   sendFileToRenderer(result.filePaths[0]);
 }
 
+const _IMG_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'tiff', 'tif'];
+
 function sendFileToRenderer(filePath) {
   try {
     const buffer = fs.readFileSync(filePath);
     const stat   = fs.statSync(filePath);
-    mainWindow.webContents.send('open-file', { name: path.basename(filePath), size: stat.size, data: buffer.toString('base64'), filePath });
-    addToRecentFiles(filePath);
+    const ext    = path.extname(filePath).slice(1).toLowerCase();
+    if (_IMG_EXTS.includes(ext)) {
+      // Image → pipeline OCR dans le renderer
+      mainWindow.webContents.send('open-file', {
+        type: 'image',
+        imageData: buffer.toString('base64'),
+        imageType: ext === 'png' ? 'png' : 'jpeg',
+        imageName: path.basename(filePath),
+        filePath
+      });
+    } else {
+      // PDF
+      mainWindow.webContents.send('open-file', { type: 'pdf', name: path.basename(filePath), size: stat.size, data: buffer.toString('base64'), filePath });
+      addToRecentFiles(filePath);
+    }
   } catch (err) {
     dialog.showErrorBox('Erreur de lecture', 'Impossible de lire le fichier :\n' + err.message);
   }
@@ -1282,9 +1297,9 @@ ipcMain.handle('pdf-deflate', async (event, { b64 }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function getPdfFromArgv(argv) {
-  // Dans l'app packagée, argv[0] = exe, argv[1] = chemin du PDF éventuellement
-  // On cherche le premier argument non-flag qui se termine par .pdf
-  return argv.slice(1).find(a => !a.startsWith('-') && a.toLowerCase().endsWith('.pdf')) || null;
+  // Accepte PDF et images (associations de fichiers)
+  const supported = ['.pdf', ..._IMG_EXTS.map(e => '.' + e)];
+  return argv.slice(1).find(a => !a.startsWith('-') && supported.some(ext => a.toLowerCase().endsWith(ext))) || null;
 }
 
 // ─── Signal renderer-ready : le renderer prévient main qu'il est initialisé ──

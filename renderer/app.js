@@ -5113,7 +5113,10 @@ async function openRecentFile(filePath) {
 
 // ─── Integration Electron ─────────────────────────────────────────────────────
 if (window.electronAPI) {
-  window.electronAPI.onOpenFile(fileData  => handleOpenWith(fileData));
+  window.electronAPI.onOpenFile(fileData => {
+    if (fileData.type === 'image') _runOcrPipeline(fileData);
+    else handleOpenWith(fileData);
+  });
   initSelectionTool();
   initTextTool();
   initDrawingTools();
