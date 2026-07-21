@@ -1970,21 +1970,24 @@ async function rotatePage(deg) {
 }
 
 // ══ Taille de la page ═════════════════════════════════════════════════════════
-let _pgSizeUnit      = 'px';   // 'px' ou 'cm'
+let _pgSizeUnit      = 'px';   // 'px', 'cm' ou 'in'
 let _pgSizeLocked    = true;   // aspect ratio verrouillé
 let _pgSizeOrigW     = 0;      // dimensions originales en points (pdf-lib units)
 let _pgSizeOrigH     = 0;
 let _pgSizeAspect    = 1;      // W/H
 
 const _PT_PER_CM = 28.3465;   // 1 cm = 28.3465 pt
+const _PT_PER_IN = 72;        // 1 in = 72 pt
 
 function _ptToDisplay(pt) {
-  return _pgSizeUnit === 'cm'
-    ? parseFloat((pt / _PT_PER_CM).toFixed(3))
-    : Math.round(pt);          // px = pt arrondi (72 dpi)
+  if (_pgSizeUnit === 'cm') return parseFloat((pt / _PT_PER_CM).toFixed(3));
+  if (_pgSizeUnit === 'in') return parseFloat((pt / _PT_PER_IN).toFixed(4));
+  return Math.round(pt);      // px = pt arrondi (72 dpi)
 }
 function _displayToPt(val) {
-  return _pgSizeUnit === 'cm' ? val * _PT_PER_CM : val;
+  if (_pgSizeUnit === 'cm') return val * _PT_PER_CM;
+  if (_pgSizeUnit === 'in') return val * _PT_PER_IN;
+  return val;
 }
 
 async function openPageSizePanel() {
@@ -2028,28 +2031,20 @@ function pgSizeLoadPage() {
 function _pgSizeRefreshInputs() {
   document.getElementById('pgsize-w').value = _ptToDisplay(_pgSizeOrigW);
   document.getElementById('pgsize-h').value = _ptToDisplay(_pgSizeOrigH);
-  const tag = _pgSizeUnit === 'cm' ? 'cm' : 'px';
-  document.getElementById('pgsize-utag-w').textContent = tag;
-  document.getElementById('pgsize-utag-h').textContent = tag;
-  const note = _pgSizeUnit === 'cm'
-    ? '1 cm = 28.35 pt'
-    : '1 px = 1 pt (72 dpi)';
-  document.getElementById('pgsize-unit-note').textContent = note;
+  document.getElementById('pgsize-utag-w').textContent = _pgSizeUnit;
+  document.getElementById('pgsize-utag-h').textContent = _pgSizeUnit;
+  const notes = { cm: '1 cm = 28.35 pt', in: '1 in = 72 pt', px: '1 px = 1 pt (72 dpi)' };
+  document.getElementById('pgsize-unit-note').textContent = notes[_pgSizeUnit];
 }
 
 function pgSizeSetUnit(u) {
-  _pgSizeUnit = u;
-  document.getElementById('pgsize-px-btn').classList.toggle('act', u === 'px');
-  document.getElementById('pgsize-cm-btn').classList.toggle('act', u === 'cm');
-  // Lire les valeurs actuelles dans les inputs, convertir dans la nouvelle unité
+  // Convertir les valeurs affichées en pt avant de changer l'unité
   const wIn = parseFloat(document.getElementById('pgsize-w').value) || 0;
   const hIn = parseFloat(document.getElementById('pgsize-h').value) || 0;
-  // Les inputs étaient dans l'ancienne unité → convertir en pt puis dans la nouvelle
-  const oldUnit = u === 'cm' ? 'px' : 'cm';
-  const ptW = oldUnit === 'cm' ? wIn * _PT_PER_CM : wIn;
-  const ptH = oldUnit === 'cm' ? hIn * _PT_PER_CM : hIn;
-  _pgSizeOrigW = ptW;
-  _pgSizeOrigH = ptH;
+  _pgSizeOrigW = _displayToPt(wIn);
+  _pgSizeOrigH = _displayToPt(hIn);
+  _pgSizeUnit = u;
+  ['px','cm','in'].forEach(x => document.getElementById('pgsize-'+x+'-btn').classList.toggle('act', x === u));
   _pgSizeRefreshInputs();
 }
 
@@ -2070,18 +2065,18 @@ function pgSizeToggleLock() {
 function pgSizeWChanged() {
   if (!_pgSizeLocked) return;
   const wIn = parseFloat(document.getElementById('pgsize-w').value) || 0;
-  const hVal = _pgSizeUnit === 'cm'
-    ? parseFloat((wIn / _pgSizeAspect).toFixed(3))
-    : Math.round(wIn / _pgSizeAspect);
+  const hVal = _pgSizeUnit === 'px'
+    ? Math.round(wIn / _pgSizeAspect)
+    : parseFloat((wIn / _pgSizeAspect).toFixed(4));
   document.getElementById('pgsize-h').value = hVal;
 }
 
 function pgSizeHChanged() {
   if (!_pgSizeLocked) return;
   const hIn = parseFloat(document.getElementById('pgsize-h').value) || 0;
-  const wVal = _pgSizeUnit === 'cm'
-    ? parseFloat((hIn * _pgSizeAspect).toFixed(3))
-    : Math.round(hIn * _pgSizeAspect);
+  const wVal = _pgSizeUnit === 'px'
+    ? Math.round(hIn * _pgSizeAspect)
+    : parseFloat((hIn * _pgSizeAspect).toFixed(4));
   document.getElementById('pgsize-w').value = wVal;
 }
 
@@ -7285,33 +7280,53 @@ async function tpInsertAsPage() {
   t('Insertion…');
   try {
     const { PDFDocument, rgb, StandardFonts } = PDFLib;
-    const doc  = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
-    const font = await doc.embedFont(StandardFonts.Helvetica);
-    const page = doc.addPage([595, 842]); // A4
-    const margin = 50, lineH = 14, fontSize = 11;
-    const maxW  = page.getWidth() - margin * 2;
+    const doc      = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
+    const font     = await doc.embedFont(StandardFonts.Helvetica);
+    const PW = 595, PH = 842, margin = 50, lineH = 14, fontSize = 11;
+    const maxW = PW - margin * 2;
+
+    // 1 — Construire toutes les lignes (word-wrap)
     const lines = [];
     for (const para of txt.split('\n')) {
+      if (!para.trim()) { lines.push(''); continue; }
       const words = para.split(' ');
       let line = '';
       for (const w of words) {
         const test = line ? line + ' ' + w : w;
-        const wid  = font.widthOfTextAtSize(test, fontSize);
-        if (wid > maxW && line) { lines.push(line); line = w; }
-        else line = test;
+        if (font.widthOfTextAtSize(test, fontSize) > maxW && line) {
+          lines.push(line); line = w;
+        } else { line = test; }
       }
-      lines.push(line);
-      lines.push('');
+      if (line) lines.push(line);
+      lines.push(''); // espace entre paragraphes
     }
-    let y = page.getHeight() - margin;
-    for (const line of lines) {
-      if (y < margin) break;
-      if (line) page.drawText(line, { x: margin, y, size: fontSize, font, color: rgb(0.05, 0.05, 0.1) });
-      y -= lineH;
+
+    // 2 — Déterminer la page courante (pour insérer après)
+    const curPageNum = parseInt(document.getElementById('cur-page')?.textContent || '1') || 1;
+    const totalExisting = doc.getPageCount();
+    let insertIdx = curPageNum; // 0-based : juste après la page courante
+
+    // 3 — Paginer les lignes sur autant de pages que nécessaire
+    const linesPerPage = Math.floor((PH - margin * 2) / lineH);
+    let pagesAdded = 0;
+    let lineIdx = 0;
+
+    while (lineIdx < lines.length) {
+      const page = doc.insertPage(insertIdx + pagesAdded, [PW, PH]);
+      let y = PH - margin;
+      let drawn = 0;
+      while (lineIdx < lines.length && drawn < linesPerPage) {
+        const line = lines[lineIdx++];
+        if (line) page.drawText(line, { x: margin, y, size: fontSize, font, color: rgb(0.05, 0.05, 0.1) });
+        y -= lineH;
+        drawn++;
+      }
+      pagesAdded++;
     }
-    const saved  = await doc.save({ useObjectStreams: false });
+
+    const saved = await doc.save({ useObjectStreams: false });
     await renderPDFFromData({ name: currentPdfName, size: saved.length, data: bytesToBase64(saved), filePath: currentFilePath }, true);
-    t('Page insérée ✓');
+    t(`${pagesAdded} page(s) insérée(s) après la page ${curPageNum} ✓`);
     closeTranslatePanel();
   } catch(err) { t('Erreur : ' + err.message); }
 }

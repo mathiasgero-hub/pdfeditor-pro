@@ -67,6 +67,7 @@
       <div class="pgsize-unit-btns">
         <button id="pgsize-px-btn"  class="pgsize-ubtn act" onclick="pgSizeSetUnit('px')">px</button>
         <button id="pgsize-cm-btn"  class="pgsize-ubtn"     onclick="pgSizeSetUnit('cm')">cm</button>
+        <button id="pgsize-in-btn"  class="pgsize-ubtn"     onclick="pgSizeSetUnit('in')">in</button>
       </div>
       <span style="color:var(--txt2);font-size:.75rem;margin-left:8px" id="pgsize-unit-note">1 pt = 1 px (72 dpi)</span>
     </div>
@@ -214,6 +215,7 @@
           <div class="mdi" onclick="menuCopy()" ><i class="fa-regular fa-copy"></i><span data-i18n="menu.copy">Copier</span><span class="kbd">⌘C</span></div>
           <div class="mdi" onclick="menuPaste()"><i class="fa-solid fa-paste"></i><span data-i18n="menu.paste">Coller</span><span class="kbd">⌘V</span></div>
           <div class="mdi" onclick="menuPasteExternal()"><i class="fa-solid fa-image"></i><span data-i18n="menu.paste_ext">Collage externe</span></div>
+          <div class="mdi" onclick="openPageSizePanel()"><i class="fa-solid fa-expand"></i><span>Redimensionner la page</span></div>
           <div class="msep"></div>
           <div class="mdi" onclick="t('Rechercher…')"><i class="fa-solid fa-magnifying-glass"></i><span data-i18n="menu.find">Rechercher &amp; Remplacer</span><span class="kbd">⌘H</span></div>
           <div class="mdi" onclick="startRedactMode()"><i class="fa-solid fa-eraser"></i><span data-i18n="menu.redact">Biffure définitive</span></div>
