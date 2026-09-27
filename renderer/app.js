@@ -552,6 +552,11 @@ let textAnnoResizing   = false;
 let textAnnoDragOff    = { x: 0, y: 0 };
 let textAnnoResizeStart = null;
 
+// Stockage persistant des annotations texte (survit aux re-rendus)
+// Chaque entrée : { id, pageNum, pdfX, pdfY, pdfW, fontSize, color, fontFamily, lines[] }
+// pdfX, pdfY en points PDF (origine bas-gauche), pdfW = largeur en points
+let _textAnnoStore = [];
+
 // ─── Toast ────────────────────────────────────────────────────────────────────
 function t(msg) {
   const el = document.getElementById('toast');
@@ -1217,6 +1222,7 @@ async function renderPDFFromData({ name, size, data, filePath = null }, pushUndo
 
 // ─── Rendu des pages principales (appele aussi lors du zoom) ─────────────────
 async function renderMainPages(pdf, scale, loadInner, loadLabel) {
+
   const gen     = ++renderGen;
   const np      = pdf.numPages;
   const pagesEl = document.getElementById('pdf-pages');
@@ -1390,6 +1396,9 @@ async function renderMainPages(pdf, scale, loadInner, loadLabel) {
       canvasEl.scrollTop = Math.max(0, newScrollTop);
     }
   }
+
+  // Restaurer les annotations texte (survivent aux re-rendus via le store)
+  _restoreTextAnnos();
 
   } finally {
     // Toujours révéler le contenu — que le render soit complet ou annulé
@@ -2093,6 +2102,7 @@ function closePageSizePanel() {
 
 async function applyPageSize() {
   if (!currentPdfData) return;
+  try { await bakeTextAnnos(true); } catch(e) { console.warn('bakeTextAnnos:', e); }
   const wIn  = parseFloat(document.getElementById('pgsize-w').value);
   const hIn  = parseFloat(document.getElementById('pgsize-h').value);
   const newW = _displayToPt(wIn);
@@ -2359,15 +2369,26 @@ document.getElementById('canvas').addEventListener('drop', async e => {
   }
 });
 
+// ─── Helper : bake les annotations texte et retourne le PDF.js doc à jour ─────
+// À appeler avant tout re-rendu qui détruit le DOM (zoom, fit, etc.)
+async function _bakeAndGetDoc() {
+  if (!_textAnnoStore.length) return currentPdfDoc;
+  try {
+    await bakeTextAnnos(true); // grave, supprime DOM, vide store, met à jour currentPdfDoc
+  } catch(e) { console.warn('_bakeAndGetDoc:', e); }
+  return currentPdfDoc;
+}
+
 // ─── Zoom : re-render PDF.js a la bonne resolution ────────────────────────────
 // Ancienne approche (CSS zoom) : agrandissait des pixels → flou.
 // Nouvelle approche : PDF.js re-calcule les pages a l'echelle exacte → net.
-function zoomTo(val) {
+async function zoomTo(val) {
   zoomLevel = Math.min(300, Math.max(40, Math.round(val)));
   document.getElementById('zoom-val').textContent = zoomLevel + '%';
   if (tabs[activeTabIdx]) tabs[activeTabIdx].zoomLevel = zoomLevel;
   if (currentPdfDoc) {
-    renderMainPages(currentPdfDoc, baseFitScale * zoomLevel / 100, null, null);
+    const pdf = await _bakeAndGetDoc();
+    renderMainPages(pdf, baseFitScale * zoomLevel / 100, null, null);
   }
 }
 function zoom(dir) { zoomTo(zoomLevel + dir * 20); }
@@ -2379,30 +2400,32 @@ let doublePageMode = false;
 // Adapter à la largeur : la page remplit toute la largeur du viewport
 async function fitWidth() {
   if (!currentPdfDoc) { t("Ouvrez un PDF d'abord"); return; }
+  const pdf   = await _bakeAndGetDoc();
   const vpEl  = document.getElementById('pdf-viewport');
   const avail = vpEl.clientWidth - 48; // 24px marge chaque côté
-  const page1 = await currentPdfDoc.getPage(1);
+  const page1 = await pdf.getPage(1);
   const vp1   = page1.getViewport({ scale: 1 });
   const targetW = doublePageMode ? (avail / 2 - 12) : avail;
   baseFitScale  = targetW / vp1.width;
   zoomLevel     = 100;
   document.getElementById('zoom-val').textContent = 'Larg.';
   if (tabs[activeTabIdx]) { tabs[activeTabIdx].baseFitScale = baseFitScale; tabs[activeTabIdx].zoomLevel = zoomLevel; }
-  await renderMainPages(currentPdfDoc, baseFitScale, null, null);
+  await renderMainPages(pdf, baseFitScale, null, null);
 }
 
 // Adapter à la hauteur : la page remplit toute la hauteur du viewport
 async function fitHeight() {
   if (!currentPdfDoc) { t("Ouvrez un PDF d'abord"); return; }
+  const pdf    = await _bakeAndGetDoc();
   const vpEl   = document.getElementById('pdf-viewport');
   const availH = vpEl.clientHeight - 24;
-  const page1  = await currentPdfDoc.getPage(1);
+  const page1  = await pdf.getPage(1);
   const vp1    = page1.getViewport({ scale: 1 });
   baseFitScale = availH / vp1.height;
   zoomLevel    = 100;
   document.getElementById('zoom-val').textContent = 'Haut.';
   if (tabs[activeTabIdx]) { tabs[activeTabIdx].baseFitScale = baseFitScale; tabs[activeTabIdx].zoomLevel = zoomLevel; }
-  await renderMainPages(currentPdfDoc, baseFitScale, null, null);
+  await renderMainPages(pdf, baseFitScale, null, null);
 }
 
 // Adapter à la page (alias fitWidth, conservé pour le menu)
@@ -3053,15 +3076,124 @@ async function flushFormFields() {
   }
 }
 
+// ─── Graver les annotations texte dans le PDF ────────────────────────────────
+// Convertit chaque .text-anno-box DOM en texte pdf-lib sur la bonne page,
+// met à jour currentPdfData, et supprime les divs (maintenant redondants).
+// Grave toutes les annotations texte du store dans currentPdfData (pdf-lib).
+// removeBoxes=true : supprime aussi les divs DOM (avant un re-rendu).
+// removeBoxes=false : laisse les divs visibles, vide le store (données déjà dans PDF).
+async function bakeTextAnnos(removeBoxes = false) {
+  if (!_textAnnoStore.length) return;
+  // Sync final depuis les contenteditables encore dans le DOM
+  document.querySelectorAll('.text-anno-box').forEach(box => {
+    const entry = _textAnnoStore.find(e => e.id === box._annoId);
+    if (!entry) return;
+    const c = box.querySelector('.text-anno-content');
+    if (!c) return;
+    entry.lines      = _contentEditableLines(c);
+    const cs         = window.getComputedStyle(c);
+    entry.fontSize   = parseFloat(c.style.fontSize || cs.fontSize) || 16;
+    entry.color      = c.style.color || cs.color || '#000';
+    entry.fontFamily = c.style.fontFamily || cs.fontFamily || 'Georgia,serif';
+  });
+
+  const { PDFDocument, rgb, StandardFonts } = PDFLib;
+  const doc = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
+
+  for (const entry of _textAnnoStore) {
+    if (!entry.lines.length || entry.lines.every(l => !l.trim())) continue;
+    const page = doc.getPages()[entry.pageNum - 1];
+    if (!page) continue;
+
+    // fontSize est en CSS px → convertir en points PDF
+    const scale    = baseFitScale * zoomLevel / 100;
+    const fsPt     = entry.fontSize / scale;
+    const lineH    = fsPt * 1.35;
+    const colorRgb = _cssColorToRgb(entry.color);
+    const ff       = (entry.fontFamily || '').toLowerCase();
+    let stdFont;
+    if      (ff.includes('courier'))                         stdFont = StandardFonts.Courier;
+    else if (ff.includes('times') || ff.includes('georgia')) stdFont = StandardFonts.TimesRoman;
+    else                                                     stdFont = StandardFonts.Helvetica;
+    const font = await doc.embedFont(stdFont);
+
+    // Offset box-top → baseline (empirique)
+    // X : +8.5/scale pour aligner sur le texte DOM (border 1.5 + padding-left 7)
+    const boxToBaseline = fsPt * 1.45;
+    const drawX = entry.pdfX + 8.5 / scale;
+    let y = entry.pdfY - boxToBaseline;
+    for (const line of entry.lines) {
+      if (y < 0) break;
+      if (line.trim()) {
+        page.drawText(line, {
+          x: Math.max(0, drawX), y,
+          size: fsPt, font,
+          color: rgb(...colorRgb),
+          maxWidth: entry.pdfW,
+        });
+      }
+      y -= lineH;
+    }
+  }
+
+  const saved = await doc.save({ useObjectStreams: false });
+  const data  = bytesToBase64(saved);
+  currentPdfData = data;
+  if (tabs[activeTabIdx]) tabs[activeTabIdx].data = data;
+
+  // Synchroniser currentPdfDoc
+  try {
+    const newDoc = await pdfjsLib.getDocument({ data: base64ToBytes(data) }).promise;
+    currentPdfDoc = newDoc;
+    if (tabs[activeTabIdx]) tabs[activeTabIdx].pdfDoc = newDoc;
+  } catch(e) { console.warn('bakeTextAnnos pdfDoc reload:', e); }
+
+  // Supprimer les divs DOM et vider le store
+  document.querySelectorAll('.text-anno-box').forEach(b => b.remove());
+  _textAnnoStore = [];
+}
+
+function _contentEditableLines(el) {
+  const lines = [''];
+  function walk(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      lines[lines.length - 1] += node.textContent;
+    } else if (node.nodeName === 'BR') {
+      lines.push('');
+    } else if (node.nodeName === 'DIV' || node.nodeName === 'P') {
+      if (lines[lines.length - 1] !== '') lines.push('');
+      for (const c of node.childNodes) walk(c);
+    } else {
+      for (const c of node.childNodes) walk(c);
+    }
+  }
+  for (const c of el.childNodes) walk(c);
+  return lines;
+}
+
+function _cssColorToRgb(colorStr) {
+  const hex = (colorStr || '').trim();
+  if (hex.startsWith('#')) {
+    const n = parseInt(hex.slice(1), 16);
+    return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255];
+  }
+  const m = hex.match(/\d+/g);
+  if (m && m.length >= 3) return [parseInt(m[0]) / 255, parseInt(m[1]) / 255, parseInt(m[2]) / 255];
+  return [0, 0, 0];
+}
+
 // ─── Enregistrer (Ctrl+S) ────────────────────────────────────────────────────
 async function saveDocument() {
   if (!currentPdfData) { t("Aucun document ouvert"); return; }
+  const hadAnnos = _textAnnoStore.length > 0;
+  try { await bakeTextAnnos(); } catch(e) { console.warn('bakeTextAnnos:', e); }
   await flushFormFields();
   if (currentFilePath) {
     const res = await window.electronAPI.writeFile(currentFilePath, currentPdfData);
     if (res.success) {
       t("Enregistre : " + currentPdfName);
       if (tabs[activeTabIdx]) tabs[activeTabIdx].savedData = currentPdfData;
+      if (hadAnnos && currentPdfDoc) renderMainPages(currentPdfDoc, baseFitScale * zoomLevel / 100, null, null);
     } else {
       t("Erreur : " + res.error);
     }
@@ -3076,6 +3208,8 @@ async function saveDocument() {
 // Pour image: rendu PDF.js page 1 a 2x → canvas → base64 → fichier
 async function saveDocumentAs() {
   if (!currentPdfData) { t("Aucun document ouvert"); return; }
+  const hadAnnos = _textAnnoStore.length > 0;
+  try { await bakeTextAnnos(); } catch(e) { console.warn('bakeTextAnnos:', e); }
   await flushFormFields();
 
   const dlg = await window.electronAPI.savePDF(currentPdfName || 'document.pdf');
@@ -3150,6 +3284,7 @@ async function saveDocumentAs() {
         tabs[activeTabIdx].savedData = currentPdfData;
       }
       t("PDF enregistre : " + currentPdfName);
+      if (hadAnnos && currentPdfDoc) renderMainPages(currentPdfDoc, baseFitScale * zoomLevel / 100, null, null);
     } else {
       t("Exporte : " + fp.split(/[\\/]/).pop());
     }
@@ -4716,27 +4851,64 @@ function initTextTool() {
 }
 
 function createTextAnno(wrap, x, y) {
+  // Convertir position DOM → PDF dès la création (stockage fiable)
+  const scale   = baseFitScale * zoomLevel / 100;
+  const canvas  = wrap.querySelector('canvas');
+  const pdfH    = canvas ? canvas.height / scale : 842;
+  const pageNum = parseInt(wrap.dataset.page || '1');
+
+  const entry = {
+    id: Date.now() + '_' + Math.random(),
+    pageNum,
+    pdfX : x / scale,
+    pdfY : pdfH - y / scale,   // origine PDF = bas de page
+    pdfW : 220 / scale,
+    fontSize   : 16,
+    color      : '#000000',
+    fontFamily : 'Georgia,serif',
+    lines      : [],            // mis à jour en temps réel
+  };
+  _textAnnoStore.push(entry);
+
+  const box = _buildTextAnnoBox(wrap, x, y, entry);
+  return box;
+}
+
+// Crée le div overlay et le connecte à une entrée du store
+function _buildTextAnnoBox(wrap, domX, domY, entry) {
   const box = document.createElement('div');
   box.className = 'text-anno-box tsel';
-  box.style.cssText = 'left:' + x + 'px;top:' + y + 'px;width:220px;min-height:40px';
+  box.style.cssText = 'left:' + domX + 'px;top:' + domY + 'px;width:220px;min-height:40px';
+  box._annoId = entry.id;
   box.innerHTML =
     '<div class="text-anno-content" contenteditable="true" ' +
-    'style="font-size:16px;font-family:Georgia,serif;color:#000;text-align:left;background:rgba(255,255,255,0.9);">' +
+    'style="font-size:' + entry.fontSize + 'px;font-family:' + entry.fontFamily + ';color:' + entry.color + ';text-align:left;background:rgba(255,255,255,0.9);">' +
+    (entry.lines.join('\n') || '') +
     '</div>' +
     '<div class="text-anno-resize" title="Redimensionner"></div>';
 
-  // Drag (only via border/handle, not content)
+  const content = box.querySelector('.text-anno-content');
+
+  // Sync contenu + style vers le store à chaque frappe
+  const syncEntry = () => {
+    entry.lines = _contentEditableLines(content);
+    const cs = window.getComputedStyle(content);
+    entry.fontSize   = parseFloat(content.style.fontSize || cs.fontSize) || 16;
+    entry.color      = content.style.color || cs.color || '#000';
+    entry.fontFamily = content.style.fontFamily || cs.fontFamily || 'Georgia,serif';
+  };
+  content.addEventListener('input', syncEntry);
+
+  // Drag
   box.addEventListener('mousedown', e => {
     if (e.target.classList.contains('text-anno-resize')) {
-      // Resize
       textAnnoResizing = true;
       textAnnoDragging = false;
       textAnnoResizeStart = { x: e.clientX, y: e.clientY, w: box.offsetWidth, h: box.offsetHeight, box };
       e.preventDefault(); e.stopPropagation();
       return;
     }
-    if (e.target.closest('.text-anno-content')) return; // typing
-    // Drag
+    if (e.target.closest('.text-anno-content')) return;
     textAnnoDragging = true;
     textAnnoResizing = false;
     activeTextAnno = box; box.classList.add('tsel');
@@ -4747,9 +4919,7 @@ function createTextAnno(wrap, x, y) {
 
   // Select on click
   box.addEventListener('mousedown', e => {
-    if (activeTextAnno && activeTextAnno !== box) {
-      activeTextAnno.classList.remove('tsel');
-    }
+    if (activeTextAnno && activeTextAnno !== box) activeTextAnno.classList.remove('tsel');
     activeTextAnno = box;
     box.classList.add('tsel');
     showTextFmtBar(box);
@@ -4757,11 +4927,23 @@ function createTextAnno(wrap, x, y) {
 
   wrap.appendChild(box);
   activeTextAnno = box;
-
-  // Focus content
-  const content = box.querySelector('.text-anno-content');
   setTimeout(() => { content.focus(); showTextFmtBar(box); }, 20);
   return box;
+}
+
+// Après chaque re-rendu, recréer les boîtes depuis le store
+function _restoreTextAnnos() {
+  if (!_textAnnoStore.length) return;
+  const scale = baseFitScale * zoomLevel / 100;
+  for (const entry of _textAnnoStore) {
+    const wrap = document.querySelector(`.page-wrap[data-page="${entry.pageNum}"]`);
+    if (!wrap) continue;
+    const canvas = wrap.querySelector('canvas');
+    const pdfH   = canvas ? canvas.height / scale : 842;
+    const domX   = entry.pdfX * scale;
+    const domY   = (pdfH - entry.pdfY) * scale;
+    _buildTextAnnoBox(wrap, domX, domY, entry);
+  }
 }
 
 function onTextDragMove(e) {
@@ -4781,6 +4963,28 @@ function onTextDragMove(e) {
 }
 
 function onTextDragUp() {
+  const s = baseFitScale * zoomLevel / 100;
+  if (textAnnoDragging && activeTextAnno) {
+    const box = activeTextAnno;
+    const wrap = box.parentElement;
+    if (wrap) {
+      const entry = _textAnnoStore.find(e => e.id === box._annoId);
+      if (entry) {
+        const cvs = wrap.querySelector('canvas');
+        const pH = cvs ? cvs.height / s : 842;
+        entry.pdfX = parseFloat(box.style.left) / s;
+        entry.pdfY = pH - parseFloat(box.style.top) / s;
+      }
+    }
+  }
+  if (textAnnoResizing && textAnnoResizeStart) {
+    const box = textAnnoResizeStart.box;
+    const entry = _textAnnoStore.find(e => e.id === box._annoId);
+    if (entry) {
+      const w = parseFloat(box.style.width);
+      if (w > 0) entry.pdfW = w / s;
+    }
+  }
   textAnnoDragging = false;
   textAnnoResizing = false;
   textAnnoResizeStart = null;
