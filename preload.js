@@ -71,13 +71,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openImageForSig: () => ipcRenderer.invoke('open-image-for-sig'),
 
   // ─── Traduction IA ────────────────────────────────────────────────────────────
-  aiTranslate: (text, targetLang, apiKey, apiUrl, rawPrompt) =>
-    ipcRenderer.invoke('ai-translate', { text, targetLang, apiKey, apiUrl, rawPrompt }),
+  aiTranslate: (text, targetLang, apiKey, rawPrompt) =>
+    ipcRenderer.invoke('ai-translate', { text, targetLang, apiKey, rawPrompt }),
 
 
   // ─── Chat IA ─────────────────────────────────────────────────────────────────
-  aiChat: (messages, apiKey, apiUrl) =>
-    ipcRenderer.invoke('ai-chat', { messages, apiKey, apiUrl }),
+  aiChat: (messages, apiKey) =>
+    ipcRenderer.invoke('ai-chat', { messages, apiKey }),
 
   // ─── Sauvegarder une image ───────────────────────────────────────────────────
   saveImageDialog: (defaultName) => ipcRenderer.invoke('save-image-dialog', { defaultName }),
@@ -98,9 +98,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onnxEspcnEnhance: (imageBase64, imageType) =>
     ipcRenderer.invoke('onnx-espcn-enhance', { imageBase64, imageType }),
 
-  // ─── OpenAI GPT-Image enhance ─────────────────────────────────────────────
-  openaiImageEnhance: (imageBase64, apiKey, prompt) =>
-    ipcRenderer.invoke('openai-image-enhance', { imageBase64, apiKey, prompt }),
+  // ─── Édition d'image Gemini (amélioration, filigrane scanné) ──────────────
+  aiImageEdit: (imageB64, width, height, prompt, apiKey, imageSize) =>
+    ipcRenderer.invoke('ai-image-edit', { imageB64, width, height, prompt, apiKey, imageSize }),
 
   // ─── Debug démarrage ─────────────────────────────────────────────────────
   getStartupLog: () => ipcRenderer.invoke('get-startup-log'),
@@ -108,9 +108,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ─── zlib inflate/deflate pour suppression filigranes ────────────────────
   pdfInflate: (b64) => ipcRenderer.invoke('pdf-inflate', { b64 }),
   pdfDeflate: (b64) => ipcRenderer.invoke('pdf-deflate', { b64 }),
-
-  // ─── OpenAI inpainting (suppression filigrane scanné) ────────────────────
-  openaiImageInpaint: (imageB64, maskB64, prompt, apiKey) =>
-    ipcRenderer.invoke('openai-image-inpaint', { imageB64, maskB64, prompt, apiKey }),
 
 });

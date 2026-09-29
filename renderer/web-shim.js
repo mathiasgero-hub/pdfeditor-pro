@@ -162,6 +162,62 @@
              imageType: img.imageType, imageName: f.name, name: f.name };
   }
 
+  // ─── Google Gemini (mêmes fonctions que main.js côté Electron) ──────────────
+  const GEMINI_API         = 'https://generativelanguage.googleapis.com/v1beta/models/';
+  const GEMINI_TEXT_MODEL  = 'gemini-3.8-flash';
+  const GEMINI_IMAGE_MODEL = 'gemini-3.1-flash-image';
+  const GEMINI_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
+
+  async function geminiGenerate(model, body, apiKey, timeoutMs) {
+    const res = await fetch(GEMINI_API + model + ':generateContent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const txt = await res.text();
+    let json;
+    try { json = JSON.parse(txt); } catch { json = null; }
+    if (!res.ok) throw new Error('Gemini ' + res.status + ' : ' + (json?.error?.message || txt.slice(0, 200)));
+    if (!json?.candidates?.length) {
+      throw new Error('Réponse Gemini vide' + (json?.promptFeedback?.blockReason ? ' (bloquée : ' + json.promptFeedback.blockReason + ')' : ''));
+    }
+    return json;
+  }
+
+  function geminiParts(json) {
+    return json.candidates[0].content?.parts || [];
+  }
+
+  function geminiText(json) {
+    const text = geminiParts(json).filter(p => p.text && !p.thought).map(p => p.text).join('');
+    if (!text) throw new Error('Réponse Gemini sans texte (' + (json.candidates[0].finishReason || '?') + ')');
+    return text;
+  }
+
+  // Messages au format { role: system|user|assistant, content } → format Gemini
+  function toGeminiBody(messages) {
+    const system = messages.filter(m => m.role === 'system').map(m => m.content).join('\n\n');
+    const body = {
+      contents: messages.filter(m => m.role !== 'system').map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }],
+      })),
+    };
+    if (system) body.systemInstruction = { parts: [{ text: system }] };
+    return body;
+  }
+
+  // Ratio Gemini le plus proche des dimensions de l'image
+  function nearestRatio(w, h) {
+    const r = Math.log(w / h);
+    return GEMINI_RATIOS.reduce((best, cur) => {
+      const [a, b] = cur.split(':').map(Number);
+      const [c, d] = best.split(':').map(Number);
+      return Math.abs(Math.log(a / b) - r) < Math.abs(Math.log(c / d) - r) ? cur : best;
+    });
+  }
+
   // ─── HTML → PDF (texte sélectionnable, via pdf-lib) ─────────────────────────
   // Mise en page simple : titres, paragraphes, gras/italique, listes, tableaux, images.
   async function htmlToPdf(html) {
@@ -525,30 +581,26 @@
 
     onOcrProgress: (cb) => {},
 
-    // ─── IA : traduction et chat (fetch direct) ───────────────────────────────
-    aiTranslate: async (text, targetLang, apiKey, apiUrl, rawPrompt) => {
+    // ─── IA : traduction et chat (Gemini, fetch direct) ──────────────────────
+    aiTranslate: async (text, targetLang, apiKey, rawPrompt) => {
       try {
-        const messages = [{ role: 'user', content: rawPrompt || `Translate to ${targetLang}:\n${text}` }];
-        const url = apiUrl || 'https://api.openai.com/v1/chat/completions';
-        const resp = await fetch(url, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-          body: JSON.stringify({ model: 'gpt-4o-mini', messages, temperature: 0.3 })
-        });
-        const json = await resp.json();
-        return { text: json.choices?.[0]?.message?.content || '', error: json.error?.message };
-      } catch (e) { return { error: e.message }; }
+        const content = rawPrompt || (
+          'Translate the following text to ' + targetLang + '.\n' +
+          'Preserve paragraphs and line breaks. Return only the translation, no commentary.\n\n' + text);
+        const body = toGeminiBody([{ role: 'user', content }]);
+        body.generationConfig = { temperature: 0.3 };
+        const json = await geminiGenerate(GEMINI_TEXT_MODEL, body, apiKey, 180000);
+        return { success: true, result: geminiText(json) };
+      } catch (e) { return { success: false, error: e.message }; }
     },
 
-    aiChat: async (messages, apiKey, apiUrl) => {
+    aiChat: async (messages, apiKey) => {
       try {
-        const url = apiUrl || 'https://api.openai.com/v1/chat/completions';
-        const resp = await fetch(url, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
-          body: JSON.stringify({ model: 'gpt-4o-mini', messages, temperature: 0.7 })
-        });
-        const json = await resp.json();
-        return { text: json.choices?.[0]?.message?.content || '', error: json.error?.message };
-      } catch (e) { return { error: e.message }; }
+        const body = toGeminiBody(messages);
+        body.generationConfig = { temperature: 0.5 };
+        const json = await geminiGenerate(GEMINI_TEXT_MODEL, body, apiKey, 180000);
+        return { success: true, result: geminiText(json) };
+      } catch (e) { return { success: false, error: e.message }; }
     },
 
     // ─── Impression ───────────────────────────────────────────────────────────
@@ -590,25 +642,25 @@
     onEsrganProgress: () => {},
     onEsrganStatus: () => {},
     onnxEspcnEnhance: async () => ({ error: 'Non disponible en mode web' }),
-    openaiImageEnhance: async (imageBase64, apiKey, prompt) => {
-      try {
-        const resp = await fetch('https://api.openai.com/v1/images/edits', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${apiKey}` },
-          body: (() => {
-            const fd = new FormData();
-            const blob = b64toBlob(imageBase64, 'image/png');
-            fd.append('image', blob, 'image.png');
-            fd.append('prompt', prompt || 'Enhance image quality');
-            fd.append('n', '1'); fd.append('size', '1024x1024');
-            return fd;
-          })()
-        });
-        const json = await resp.json();
-        return { data: json.data?.[0]?.b64_json || null, error: json.error?.message };
-      } catch (e) { return { error: e.message }; }
+    // Édition d'image Gemini — renvoie { b64, mimeType } (lève une erreur sinon)
+    aiImageEdit: async (imageB64, width, height, prompt, apiKey, imageSize) => {
+      const body = {
+        contents: [{ role: 'user', parts: [
+          { text: prompt },
+          { inlineData: { mimeType: 'image/png', data: imageB64 } },
+        ] }],
+        generationConfig: {
+          responseModalities: ['TEXT', 'IMAGE'],
+          imageConfig: { aspectRatio: nearestRatio(width, height), imageSize: imageSize || '2K' },
+        },
+      };
+      const json = await geminiGenerate(GEMINI_IMAGE_MODEL, body, apiKey, 240000);
+      const parts = geminiParts(json);
+      const img = parts.map(p => p.inlineData || p.inline_data).find(Boolean);
+      if (!img) throw new Error("Gemini n'a pas renvoyé d'image" +
+        (parts.some(p => p.text) ? ' : ' + parts.map(p => p.text || '').join(' ').slice(0, 150) : ''));
+      return { b64: img.data, mimeType: img.mimeType || img.mime_type || 'image/png' };
     },
-    openaiImageInpaint: async () => ({ error: 'Non disponible' }),
 
     // ─── Listeners (no-op en web) ─────────────────────────────────────────────
     onOpenFile:       () => {},

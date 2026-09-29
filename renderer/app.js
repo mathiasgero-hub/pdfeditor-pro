@@ -190,8 +190,8 @@ const LANG = {
     'settings.ocr_local'   : 'Local — hors ligne — sans configuration',
     'settings.ocr_ai'      : 'IA — haute précision — nécessite une clé API',
     'settings.gv_key'      : 'Clé API Google Cloud Vision',
-    'settings.openai_key'  : 'Clé API OpenAI (ChatGPT)',
-    'settings.openai_used' : 'Utilisée pour : Traduction IA · Résumé · Chat avec le PDF',
+    'settings.gemini_key'  : 'Clé API Google Gemini',
+    'settings.gemini_used' : 'Utilisée pour : Traduction IA · Résumé · Chat avec le PDF · Amélioration d’image IA',
     'settings.saved'       : 'Paramètres enregistrés',
     // ── Taille de la page ─────────────────────────────────────────────────────
     'pgsize.title'         : 'Taille de la page',
@@ -388,8 +388,8 @@ const LANG = {
     'settings.ocr_local'   : 'Local — offline — no configuration needed',
     'settings.ocr_ai'      : 'AI — high accuracy — requires an API key',
     'settings.gv_key'      : 'Google Cloud Vision API key',
-    'settings.openai_key'  : 'OpenAI API key (ChatGPT)',
-    'settings.openai_used' : 'Used for: AI Translation · Summary · Chat with PDF',
+    'settings.gemini_key'  : 'Google Gemini API key',
+    'settings.gemini_used' : 'Used for: AI Translation · Summary · Chat with PDF · AI image enhancement',
     'settings.saved'       : 'Settings saved',
     // ── Taille de la page ─────────────────────────────────────────────────────
     'pgsize.title'         : 'Page size',
@@ -2646,19 +2646,19 @@ async function openOcrSettings() {
   <div class="mbtn" onclick="saveOcrSettings()"><i class="fa-solid fa-check"></i> Enregistrer</div>
 </div>`;
 
-  const openaiKey = settings.openaiKey || '';
+  const geminiKey = settings.geminiKey || '';
   body += `
 <div style="margin-top:18px;padding-top:16px;border-top:1px solid rgba(200,150,46,.2)">
-  <div style="font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.12em;color:var(--gold);margin-bottom:10px;text-transform:uppercase">Clé API OpenAI (ChatGPT)</div>
+  <div style="font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.12em;color:var(--gold);margin-bottom:10px;text-transform:uppercase">Clé API Google Gemini</div>
   <div style="display:flex;gap:6px;align-items:center">
-    <input id="openai-api-key" type="password" placeholder="sk-…"
+    <input id="gemini-api-key" type="password" placeholder="Collez votre clé Gemini"
       style="flex:1;padding:7px 10px;background:rgba(0,0,0,.35);border:1px solid rgba(200,150,46,.4);border-radius:3px;color:var(--txt);font-family:monospace;font-size:.82rem;box-sizing:border-box;outline:none">
-    <span onclick="encTogglePwd('openai-api-key',this)" title="Afficher"
+    <span onclick="encTogglePwd('gemini-api-key',this)" title="Afficher"
       style="cursor:pointer;color:var(--txt2);padding:4px 8px;border:1px solid rgba(200,150,46,.3);border-radius:3px;font-size:.8rem"><i class="fa-solid fa-eye"></i></span>
   </div>
   <div style="margin-top:6px;font-size:.72rem;opacity:.55">
-    Utilisée pour : Traduction IA · Résumé · Chat avec le PDF
-    &nbsp;·&nbsp; <a href="https://platform.openai.com/api-keys" style="color:var(--gold-l);text-decoration:none" target="_blank">platform.openai.com</a>
+    Utilisée pour : Traduction IA · Résumé · Chat avec le PDF · Amélioration d’image IA
+    &nbsp;·&nbsp; <a href="https://aistudio.google.com/apikey" style="color:var(--gold-l);text-decoration:none" target="_blank">aistudio.google.com</a>
   </div>
 </div>`;
 
@@ -2667,8 +2667,8 @@ async function openOcrSettings() {
   // Appliquer les valeurs sauvegardees
   const radio = document.getElementById('ocr-' + engine);
   if (radio) radio.checked = true;
-  const oaKeyInput = document.getElementById('openai-api-key');
-  if (oaKeyInput) oaKeyInput.value = openaiKey;
+  const gmKeyInput = document.getElementById('gemini-api-key');
+  if (gmKeyInput) gmKeyInput.value = geminiKey;
   const keyInput = document.getElementById('gv-api-key');
   if (keyInput) keyInput.value = apiKey;
   // Pré-sélectionner la langue courante
@@ -2698,10 +2698,12 @@ async function saveOcrSettings() {
   const radio  = document.querySelector('input[name="ocr-engine"]:checked');
   const engine = radio ? radio.value : 'tesseract';
   const apiKey = (document.getElementById('gv-api-key') || {}).value || '';
-  const openaiKey = (document.getElementById('openai-api-key') || {}).value || '';
+  const geminiKey = ((document.getElementById('gemini-api-key') || {}).value || '').trim();
   const langRadio = document.querySelector('input[name="app-lang"]:checked');
   const lang = langRadio ? langRadio.value : _lang;
-  await window.electronAPI.saveSettings({ ocrEngine: engine, googleVisionKey: apiKey, openaiKey, lang });
+  const prev = (await window.electronAPI.getSettings()) || {};
+  delete prev.openaiKey; // ancienne clé OpenAI, plus utilisée
+  await window.electronAPI.saveSettings({ ...prev, ocrEngine: engine, googleVisionKey: apiKey, geminiKey, lang });
   // Appliquer la langue immédiatement
   applyLang(lang);
   closeModal();
@@ -7410,7 +7412,7 @@ async function openTranslatePanel() {
   // Pre-fill API key from settings if saved
   try {
     const s = await window.electronAPI.getSettings();
-    if (s.openaiKey) document.getElementById('tp-apikey').value = s.openaiKey;
+    if (s.geminiKey) document.getElementById('tp-apikey').value = s.geminiKey;
   } catch(e) {}
 }
 function closeTranslatePanel() {
@@ -7427,7 +7429,7 @@ async function doTranslate() {
   let apiKey = document.getElementById('tp-apikey').value.trim();
   if (!apiKey) apiKey = await _getAIKey();
   if (!lang) { t('Entrez une langue cible'); return; }
-  if (!apiKey) { t('Clé API OpenAI manquante — configurez-la dans Paramètres (⚙)'); return; }
+  if (!apiKey) { t('Clé API Gemini manquante — configurez-la dans Paramètres (⚙)'); return; }
 
   const scope = document.getElementById('tp-scope').value;
   const rangeStr = document.getElementById('tp-range').value;
@@ -7458,10 +7460,10 @@ async function doTranslate() {
 
     // Save API key for later
     window.electronAPI.getSettings().then(s =>
-      window.electronAPI.saveSettings({ ...s, openaiKey: apiKey })).catch(()=>{});
+      window.electronAPI.saveSettings({ ...s, geminiKey: apiKey })).catch(()=>{});
 
     // Call AI translation via IPC
-    const res = await window.electronAPI.aiTranslate(fullText, lang, apiKey, null);
+    const res = await window.electronAPI.aiTranslate(fullText, lang, apiKey);
     if (!res.success) throw new Error(res.error);
 
     document.getElementById('tp-result').value = res.result;
@@ -8263,7 +8265,7 @@ async function doTranslateInPlace() {
   let apiKey = document.getElementById('tp-apikey').value.trim();
   if (!apiKey) apiKey = await _getAIKey();
   if (!lang)   { t('Entrez une langue cible'); return; }
-  if (!apiKey) { t('Clé API OpenAI requise — sk-…'); return; }
+  if (!apiKey) { t('Clé API Gemini manquante — configurez-la dans Paramètres (⚙)'); return; }
 
   const scope    = document.getElementById('tp-scope').value;
   const rangeStr = document.getElementById('tp-range').value;
@@ -8312,7 +8314,7 @@ async function doTranslateInPlace() {
         `- No explanations, no markdown.\n\n` + JSON.stringify(texts);
 
       t(`Page ${pn} — traduction de ${texts.length} blocs…`);
-      const res = await window.electronAPI.aiTranslate('', lang, apiKey, null, rawPrompt);
+      const res = await window.electronAPI.aiTranslate('', lang, apiKey, rawPrompt);
       if (!res.success) throw new Error(res.error);
 
       let translated;
@@ -8396,7 +8398,7 @@ async function doTranslateInPlace() {
 async function _getAIKey() {
   try {
     const s = await window.electronAPI.getSettings();
-    if (s && s.openaiKey) return s.openaiKey;
+    if (s && s.geminiKey) return s.geminiKey;
   } catch(e) {}
   return '';
 }
@@ -8404,11 +8406,11 @@ async function _getAIKey() {
 async function aiKeySave(val) {
   try {
     const s = await window.electronAPI.getSettings();
-    await window.electronAPI.saveSettings({ ...s, openaiKey: val });
+    await window.electronAPI.saveSettings({ ...s, geminiKey: val });
   } catch(e) {}
 }
 
-// OpenAI key is stored in Settings (gear icon) — no inline pre-fill needed.
+// Gemini key is stored in Settings (gear icon) — no inline pre-fill needed.
 
 // ═════════════════════════════════════════════════════════════════════════════
 // ── RÉSUMÉ DU DOCUMENT ───────────────────────────────────────────────────────
@@ -8426,7 +8428,7 @@ function closeSummarizePanel() {
 
 async function doSummarize() {
   const apiKey = await _getAIKey();
-  if (!apiKey) { t('Clé API OpenAI manquante — configurez-la dans Paramètres (⚙)'); return; }
+  if (!apiKey) { t('Clé API Gemini manquante — configurez-la dans Paramètres (⚙)'); return; }
   if (!currentPdfDoc) return;
 
   const btn = document.getElementById('sum-btn');
@@ -8485,7 +8487,7 @@ Document:
 ${fullText}`;
 
     const res = await window.electronAPI.aiChat(
-      [{ role: 'user', content: prompt }], apiKey, null
+      [{ role: 'user', content: prompt }], apiKey
     );
 
     document.getElementById('sum-loading').style.display = 'none';
@@ -8615,7 +8617,7 @@ async function chatSend(event) {
 
   const apiKey = await _getAIKey();
   if (!apiKey) {
-    _chatAddBubble('ai', '⚠️ Clé API OpenAI manquante — configurez-la dans Paramètres (⚙).', 'error');
+    _chatAddBubble('ai', '⚠️ Clé API Gemini manquante — configurez-la dans Paramètres (⚙).', 'error');
     return;
   }
   if (!currentPdfDoc) {
@@ -8642,7 +8644,7 @@ Réponds de façon précise et concise. Si le document est dans une autre langue
       { role: 'user', content: msg }
     ];
 
-    const res = await window.electronAPI.aiChat(messages, apiKey, null);
+    const res = await window.electronAPI.aiChat(messages, apiKey);
 
     typingBubble.remove();
 
@@ -9851,15 +9853,15 @@ function _parsePageRange(str, max) {
   return Array.from(result).sort((a,b) => a-b);
 }
 
-// ── Amélioration OpenAI GPT-Image-1 (via IPC — main process, pas de CSP) ────
-async function _openaiImageEnhance(srcCanvas, apiKey, setP) {
+// ── Amélioration Gemini (via IPC — main process, pas de CSP) ─────────────────
+async function _aiImageEnhance(srcCanvas, apiKey, setP) {
   const b64src = srcCanvas.toDataURL('image/png').split(',')[1];
 
   // Écouter les mises à jour de progression depuis le main process
   window.electronAPI.removeAllListeners('esrgan-status');
   window.electronAPI.onEsrganStatus(msg => setP(30, msg));
 
-  setP(20, 'Envoi à OpenAI GPT-Image…');
+  setP(20, 'Envoi à Gemini…');
 
   const prompt =
     'You are a pixel-level image restoration filter, not a designer. ' +
@@ -9879,24 +9881,20 @@ async function _openaiImageEnhance(srcCanvas, apiKey, setP) {
     'The scene does not move. Nothing is added or removed. Only clarity improves.';
 
   // Appel via IPC (main process) pour contourner la CSP du renderer
-  const json = await window.electronAPI.openaiImageEnhance(b64src, apiKey, prompt);
+  const { b64, mimeType } = await window.electronAPI.aiImageEdit(
+    b64src, srcCanvas.width, srcCanvas.height, prompt, apiKey, '2K');
 
   setP(80, 'Réception et décodage…');
-  const item = json.data?.[0];
-  if (!item) throw new Error('Réponse OpenAI vide');
-
-  const resultB64 = item.b64_json;
-  if (!resultB64) throw new Error('Aucune image base64 retournée par OpenAI');
-
   const img = new Image();
   await new Promise((res, rej) => {
     img.onload = res; img.onerror = rej;
-    img.src = 'data:image/png;base64,' + resultB64;
+    img.src = 'data:' + mimeType + ';base64,' + b64;
   });
+  // Gemini produit un format standard (3:4, 2:3…) : revenir aux proportions exactes de la page
   const out = document.createElement('canvas');
   out.width  = img.naturalWidth;
-  out.height = img.naturalHeight;
-  out.getContext('2d').drawImage(img, 0, 0);
+  out.height = Math.round(img.naturalWidth * srcCanvas.height / srcCanvas.width);
+  out.getContext('2d').drawImage(img, 0, 0, out.width, out.height);
   return out;
 }
 
@@ -9931,11 +9929,11 @@ async function doEnhance() {
 
     // ── Vérification modèle / clé API selon le niveau choisi ───────────────────
     setP(0, 'Vérification…');
-    let openaiApiKey = '';
+    let aiApiKey = '';
     if (level === 'optimal') {
-      openaiApiKey = await _getAIKey();
-      if (!openaiApiKey) {
-        t('Clé API OpenAI manquante — configurez-la dans Paramètres (⚙)');
+      aiApiKey = await _getAIKey();
+      if (!aiApiKey) {
+        t('Clé API Gemini manquante — configurez-la dans Paramètres (⚙)');
         return;
       }
     } else if (level === 'espcn') {
@@ -9966,8 +9964,8 @@ async function doEnhance() {
 
       let finalCanvas;
       if (level === 'optimal') {
-        _showModelStatus('✨ Envoi à GPT-Image-1…');
-        finalCanvas = await _openaiImageEnhance(offscreen, openaiApiKey, (pct, txt) => {
+        _showModelStatus('✨ Envoi à Gemini…');
+        finalCanvas = await _aiImageEnhance(offscreen, aiApiKey, (pct, txt) => {
           setP(baseP + Math.round(pct * 0.35), txt);
         });
       } else if (level === 'espcn') {
@@ -10014,7 +10012,7 @@ async function doEnhance() {
       filePath: currentFilePath
     }, true);
 
-    const modelLabel = level === 'optimal' ? 'GPT-Image-1 (OpenAI)'
+    const modelLabel = level === 'optimal' ? 'Gemini (Google)'
       : level === 'espcn' ? 'ESPCN 4×'
       : `Real-ESRGAN 4×${level === 'maximum' ? ' + netteté' : ''}`;
     document.getElementById('enh-result').style.display = 'block';
@@ -11405,115 +11403,6 @@ async function _wmRemoveScanned(pageIndices, setP, smartFill = false) {
   }
 
   setP(97, 'Sauvegarde…');
-  const newBytes = await newDoc.save();
-  setP(100, 'Terminé');
-  return newBytes;
-}
-
-// ── Mode IA : inpainting via OpenAI Images Edit (DALL-E) ─────────────────────
-async function _wmRemoveScannedAI(pageIndices, setP, apiKey) {
-  const { PDFDocument } = PDFLib;
-  const gMin = parseInt(document.getElementById('rmwm-gmin').value) || 140;
-  const gMax = parseInt(document.getElementById('rmwm-gmax').value) || 220;
-  const TOL  = 30;
-  const TARGET = 1024; // gpt-image-1 : image carrée max 1024×1024
-
-  setP(5, 'Chargement…');
-  const newDoc = await PDFDocument.create();
-
-  for (let idx = 0; idx < pageIndices.length; idx++) {
-    const pi = pageIndices[idx];
-    setP(10 + Math.round(idx / pageIndices.length * 80), `Page ${pi + 1} — envoi à l'IA…`);
-
-    // ── Rendu page ──────────────────────────────────────────────────────────
-    const pdfPage = await currentPdfDoc.getPage(pi + 1);
-    const vp1     = pdfPage.getViewport({ scale: 1.0 });
-    const scale   = Math.min(TARGET / vp1.width, TARGET / vp1.height, 2.0);
-    const viewport = pdfPage.getViewport({ scale });
-    const canvas = document.createElement('canvas');
-    canvas.width  = viewport.width;
-    canvas.height = viewport.height;
-    const ctx = canvas.getContext('2d');
-    await pdfPage.render({ canvasContext: ctx, viewport }).promise;
-
-    const W = canvas.width, H = canvas.height;
-    const imgData = ctx.getImageData(0, 0, W, H);
-    const d = imgData.data;
-    const mask = _wmBuildMask(d, W, H, gMin, gMax, TOL);
-
-    // ── Image opaque originale (1024×1024, fond blanc) ─────────────────────
-    const sqCanvas = document.createElement('canvas');
-    sqCanvas.width = sqCanvas.height = TARGET;
-    const sqCtx = sqCanvas.getContext('2d');
-    sqCtx.fillStyle = '#ffffff';
-    sqCtx.fillRect(0, 0, TARGET, TARGET);
-    sqCtx.drawImage(canvas, 0, 0);  // image originale, SANS aucune modification
-
-    // ── Masque séparé : transparent là où le filigrane, opaque ailleurs ────
-    // gpt-image-1 : zones alpha=0 dans le masque = zones à reconstruire dans l'image
-    const maskCanvas = document.createElement('canvas');
-    maskCanvas.width = maskCanvas.height = TARGET;
-    const mCtx = maskCanvas.getContext('2d');
-    // Fond entièrement opaque (zones à conserver)
-    mCtx.fillStyle = 'rgba(0,0,0,255)';
-    mCtx.fillRect(0, 0, TARGET, TARGET);
-    const mData = mCtx.getImageData(0, 0, TARGET, TARGET);
-    const md = mData.data;
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        if (!mask[y * W + x]) continue;
-        const mi = (y * TARGET + x) * 4;
-        md[mi] = md[mi+1] = md[mi+2] = md[mi+3] = 0; // transparent = à reconstruire
-      }
-    }
-    mCtx.putImageData(mData, 0, 0);
-
-    // ── Appel IPC → main process + timer de progression ───────────────────
-    const imageB64 = sqCanvas.toDataURL('image/png').split(',')[1];
-    const maskB64  = maskCanvas.toDataURL('image/png').split(',')[1];
-    const basePct  = 10 + Math.round(idx / pageIndices.length * 80);
-    let elapsed = 0;
-    const ticker = setInterval(() => {
-      elapsed++;
-      const label = pageIndices.length > 1
-        ? `Page ${pi + 1}/${pageIndices.length} — IA en cours… ${elapsed}s`
-        : `Analyse IA en cours… ${elapsed}s`;
-      setP(basePct, label);
-    }, 1000);
-
-    let json;
-    try {
-      json = await electronAPI.openaiImageInpaint(
-        imageB64, maskB64,
-        'Remove the watermark text. Restore the original background underneath as if the watermark was never there. Do not modify any other content.',
-        apiKey
-      );
-    } finally {
-      clearInterval(ticker);
-    }
-    const resultB64 = json.data?.[0]?.b64_json;
-    if (!resultB64) throw new Error('Réponse IA vide');
-
-    // ── Recadrer au format original et intégrer ─────────────────────────────
-    const resultImg = await new Promise((res, rej) => {
-      const img = new Image();
-      img.onload = () => res(img);
-      img.onerror = rej;
-      img.src = 'data:image/png;base64,' + resultB64;
-    });
-    const cropCanvas = document.createElement('canvas');
-    cropCanvas.width = W; cropCanvas.height = H;
-    cropCanvas.getContext('2d').drawImage(resultImg, 0, 0, W, H, 0, 0, W, H);
-
-    const finalB64 = cropCanvas.toDataURL('image/png').split(',')[1];
-    const finalBytes = _b64ToU8(finalB64);
-    const img2 = await newDoc.embedPng(finalBytes);
-    const [pgW, pgH] = [W / scale, H / scale];
-    const newPage = newDoc.addPage([pgW, pgH]);
-    newPage.drawImage(img2, { x: 0, y: 0, width: pgW, height: pgH });
-  }
-
-  setP(95, 'Sauvegarde…');
   const newBytes = await newDoc.save();
   setP(100, 'Terminé');
   return newBytes;
