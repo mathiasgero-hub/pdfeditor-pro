@@ -1,0 +1,30 @@
+{
+  "name": "PDFEdit Pro",
+  "short_name": "PDFEdit",
+  "description": "Éditeur PDF professionnel — annotations, OCR, signature",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#4a90d9",
+  "orientation": "any",
+  "file_handlers": [
+    {
+      "action": "/",
+      "accept": { "application/pdf": [".pdf"] },
+      "launch_type": "single-client"
+    }
+  ],
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    }
+  ]
+}

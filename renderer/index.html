@@ -3,13 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="shortcut icon" type="image/x-icon" href="icon.ico">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4a90d9">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="PDFEdit Pro">
 <meta http-equiv="Content-Security-Policy"
       content="default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
-               script-src 'self' https://cdnjs.cloudflare.com 'unsafe-eval' 'unsafe-inline';
+               script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net 'unsafe-eval' 'unsafe-inline';
                style-src  'self' https://fonts.googleapis.com https://cdnjs.cloudflare.com 'unsafe-inline';
                font-src   'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:;
                img-src    'self' data: blob:;
-               worker-src blob: https://cdnjs.cloudflare.com;">
+               worker-src 'self' blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
+               connect-src 'self' https://vision.googleapis.com https://api.openai.com https://fonts.googleapis.com https://fonts.gstatic.com;">
 <title>PDFEdit - Édition Or</title>
 
 <!-- Polices Art Nouveau -->
@@ -23,7 +31,16 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
 <!-- pdf-lib : création de PDF -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-<script src="../node_modules/onnxruntime-web/dist/ort.min.js"></script>
+<!-- ONNX Runtime : chargé depuis CDN si pas en Electron -->
+<script>
+  if (!window.electronAPI) {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js';
+    document.head.appendChild(s);
+  } else {
+    document.write('<script src="../node_modules/onnxruntime-web/dist/ort.min.js"><\/script>');
+  }
+</script>
 </head>
 <body>
 
@@ -607,6 +624,8 @@
 </footer>
 
 <!-- Logique applicative -->
+<!-- Shim web : remplace electronAPI si hors Electron -->
+<script src="web-shim.js"></script>
 <script src="app.js"></script>
 
   <!-- ═══ SÉLECTION : barre d'actions + panneaux ═══════════════════════════ -->
@@ -1906,5 +1925,38 @@
     </div>
   </div>
 </div>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  }
+
+  // PWA File Handling API : ouvre le PDF passé via "Ouvrir avec"
+  if ('launchQueue' in window) {
+    window.launchQueue.setConsumer(async (launchParams) => {
+      if (!launchParams.files.length) return;
+      for (const handle of launchParams.files) {
+        try {
+          const file = await handle.getFile();
+          const ab = await file.arrayBuffer();
+          const bytes = new Uint8Array(ab);
+          let b64 = '';
+          for (let i = 0; i < bytes.length; i += 8192)
+            b64 += String.fromCharCode(...bytes.subarray(i, i + 8192));
+          b64 = btoa(b64);
+          // Attendre que handleOpenWith soit disponible (app.js chargé)
+          const open = () => {
+            if (typeof handleOpenWith === 'function')
+              handleOpenWith({ name: file.name, size: file.size, data: b64, filePath: null });
+            else
+              setTimeout(open, 100);
+          };
+          open();
+        } catch(e) { console.error('launchQueue error', e); }
+      }
+    });
+  }
+</script>
 </body>
 </html>
