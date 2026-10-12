@@ -4,7 +4,7 @@
  */
 
 // Incrémenter à chaque déploiement pour purger l'ancien cache
-const CACHE_NAME = 'pdfedit-v4';
+const CACHE_NAME = 'pdfedit-v9';
 
 // Fichiers à mettre en cache au premier chargement
 const PRECACHE = [
@@ -13,6 +13,7 @@ const PRECACHE = [
   '/app.js',
   '/styles.css',
   '/web-shim.js',
+  '/web-account.js',
   '/manifest.json',
   '/icon.png',
   '/icon.ico',
@@ -45,6 +46,8 @@ self.addEventListener('fetch', event => {
   // Ignorer les requêtes non-GET et hors domaine (CDN, API externes)
   if (event.request.method !== 'GET') return;
   if (url.origin !== self.location.origin) return;
+  // Compte et relais IA : jamais en cache (réponses propres à la personne connectée)
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) return;
 
   // Revalider auprès du serveur plutôt que de servir le cache HTTP (anciennes
   // réponses "immutable") ; une requête de navigation ne peut pas être reconstruite.

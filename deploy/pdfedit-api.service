@@ -1,0 +1,19 @@
+[Unit]
+Description=PDFEdit Or - compte Google et relais Gemini / Google Vision
+After=network.target
+
+[Service]
+Type=simple
+User=pdfedit
+WorkingDirectory=/home/pdfedit/app
+EnvironmentFile=/home/pdfedit/app/.env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

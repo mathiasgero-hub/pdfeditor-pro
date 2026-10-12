@@ -1,0 +1,17 @@
+{
+  "name": "pdfedit-web-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PDFEdit Or (web) — connexion Google et relais vers Gemini / Google Vision",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "dev": "node --watch --env-file-if-exists=.env server.js",
+    "test": "node test/api.mjs"
+  },
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "express": "^5.2.1",
+    "google-auth-library": "^10.9.1"
+  }
+}

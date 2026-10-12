@@ -17,7 +17,7 @@
                font-src   'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:;
                img-src    'self' data: blob:;
                worker-src 'self' blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
-               connect-src 'self' https://vision.googleapis.com https://generativelanguage.googleapis.com https://fonts.googleapis.com https://fonts.gstatic.com;">
+               connect-src 'self' data: blob: https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com;">
 <title>PDFEdit - Édition Or</title>
 
 <!-- Polices Art Nouveau -->
@@ -28,7 +28,7 @@
 <!-- Charte graphique Art Nouveau -->
 <link rel="stylesheet" href="styles.css">
 <!-- PDF.js -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <!-- pdf-lib : création de PDF -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <!-- ONNX Runtime : chargé depuis CDN si pas en Electron -->
@@ -625,6 +625,7 @@
 
 <!-- Logique applicative -->
 <!-- Shim web : remplace electronAPI si hors Electron -->
+<script src="web-account.js"></script>
 <script src="web-shim.js"></script>
 <script src="app.js"></script>
 

@@ -162,23 +162,50 @@
              imageType: img.imageType, imageName: f.name, name: f.name };
   }
 
-  // ─── Google Gemini (mêmes fonctions que main.js côté Electron) ──────────────
-  const GEMINI_API         = 'https://generativelanguage.googleapis.com/v1beta/models/';
+  // ─── Google Gemini : les appels passent par le serveur de PDFEdit (/api/gemini/…) ───
+  // Le serveur choisit la clé : celle du lycée pour un compte @frenchschooljakarta.com, sinon la clé personnelle
+  // (en-tête X-Gemini-Key, voir web-account.js). Le paramètre apiKey hérité de la version bureau est ignoré.
   const GEMINI_TEXT_MODEL  = 'gemini-3.8-flash';
   const GEMINI_IMAGE_MODEL = 'gemini-3.1-flash-image';
   const GEMINI_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
 
-  async function geminiGenerate(model, body, apiKey, timeoutMs) {
-    const res = await fetch(GEMINI_API + model + ':generateContent', {
+  // Connexion ou clé personnelle manquante : ouvrir le panneau des réglages et interrompre la fonction.
+  async function needAccount(service) {
+    const A = window.webAccount;
+    await A.load();
+    const st = A.status(service);
+    if (st === 'ok') return;
+    if (st === 'offline') throw new Error('Pas de connexion au serveur de PDFEdit.');
+    A.gate();
+    throw new Error(st === 'login'
+      ? 'Connexion requise : connectez-vous avec Google (⚙ Paramètres).'
+      : 'Votre clé API ' + (service === 'vision' ? 'Google Vision' : 'Gemini') + ' est requise (⚙ Paramètres).');
+  }
+
+  // Réponse d'erreur du serveur : message lisible, et réglages ouverts si le compte ou la clé est en cause.
+  async function relayError(res, txt, json) {
+    if (json && ['login', 'key', 'badKey'].includes(json.code)) {
+      await window.webAccount.load(true);
+      window.webAccount.gate();
+    }
+    const msg = json?.error?.message || (typeof json?.error === 'string' ? json.error : '') ||
+      (res.status === 413 ? 'Image trop lourde.' : txt.slice(0, 160));
+    return new Error(msg || 'Erreur ' + res.status);
+  }
+
+  async function geminiGenerate(model, body, _apiKey, timeoutMs) {
+    await needAccount('gemini');
+    const res = await fetch('/api/gemini/' + model, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', ...window.webAccount.headers('gemini') },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
     const txt = await res.text();
     let json;
     try { json = JSON.parse(txt); } catch { json = null; }
-    if (!res.ok) throw new Error('Gemini ' + res.status + ' : ' + (json?.error?.message || txt.slice(0, 200)));
+    if (!res.ok) throw await relayError(res, txt, json);
     if (!json?.candidates?.length) {
       throw new Error('Réponse Gemini vide' + (json?.promptFeedback?.blockReason ? ' (bloquée : ' + json.promptFeedback.blockReason + ')' : ''));
     }
@@ -455,6 +482,7 @@
 
   // ─── API shim ────────────────────────────────────────────────────────────────
   window.electronAPI = {
+    isWeb: true,
 
     // Ouvrir un PDF (file input)
     openPDF: async () => {
@@ -528,8 +556,22 @@
     showInFolder: async () => {},
 
     // ─── Paramètres (localStorage) ────────────────────────────────────────────
-    getSettings: async () => lsGet('pdfeditor_settings', {}),
-    saveSettings: async (s) => { lsSet('pdfeditor_settings', s); return { success: true }; },
+    // Les clés ne sont jamais dans les réglages : « geminiKey » / « googleVisionKey » valent seulement « compte »
+    // quand la personne peut utiliser la fonction (compte du lycée, ou clé personnelle enregistrée).
+    getSettings: async () => {
+      await window.webAccount.load();
+      const st = lsGet('pdfeditor_settings', {});
+      delete st.geminiKey; delete st.googleVisionKey;
+      if (window.webAccount.ready('gemini')) st.geminiKey = 'compte';
+      if (window.webAccount.ready('vision')) st.googleVisionKey = 'compte';
+      return st;
+    },
+    saveSettings: async (s) => {
+      const c = { ...s };
+      delete c.geminiKey; delete c.googleVisionKey;
+      lsSet('pdfeditor_settings', c);
+      return { success: true };
+    },
 
     // ─── Fichiers récents (localStorage) ─────────────────────────────────────
     getRecentFiles: async () => lsGet('pdfeditor_recent', []),
@@ -560,16 +602,22 @@
       } catch (e) { return { error: e.message }; }
     },
 
-    ocrWithGoogleVision: async (imageData, imageType, apiKey) => {
+    ocrWithGoogleVision: async (imageData) => {
       try {
-        const resp = await fetch(
-          `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
-          { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ requests: [{ image: { content: imageData },
-              features: [{ type: 'TEXT_DETECTION' }] }] }) }
-        );
-        const json = await resp.json();
-        const ann = json.responses?.[0]?.textAnnotations || [];
+        await needAccount('vision');
+        const resp = await fetch('/api/vision', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', ...window.webAccount.headers('vision') },
+          body: JSON.stringify({ requests: [{ image: { content: imageData }, features: [{ type: 'TEXT_DETECTION' }] }] }),
+        });
+        const txt = await resp.text();
+        let json;
+        try { json = JSON.parse(txt); } catch { json = null; }
+        if (!resp.ok) throw await relayError(resp, txt, json);
+        const first = json.responses?.[0];
+        if (first?.error) throw new Error(first.error.message || 'Erreur Google Vision');
+        const ann = first?.textAnnotations || [];
         const words = ann.slice(1).map(a => {
           const vs = a.boundingPoly?.vertices || [];
           return { text: a.description, confidence: 95,

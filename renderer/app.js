@@ -475,7 +475,7 @@ async function loadLang() {
 // ─── Config PDF.js ─────────────────────────────────────────────────────────────
 if (typeof pdfjsLib !== 'undefined') {
   pdfjsLib.GlobalWorkerOptions.workerSrc =
-    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 }
 
 // ─── Etat global du document ouvert ──────────────────────────────────────────
@@ -2600,6 +2600,39 @@ function toggleOcrEngine() {
   if (testBtn)    testBtn.style.display    = isGoogle ? 'inline-flex' : 'none';
 }
 
+// Mode d'emploi pour obtenir une clé API Google (réglages ; la version web l'affiche aussi dans web-account.js).
+function _keyHelpHtml(service, open) {
+  const a = (href, txt) => `<a href="${href}" target="_blank" rel="noopener" style="color:var(--gold-l)">${txt}</a>`;
+  const steps = service === 'vision' ? [
+    `Ouvrez ${a('https://console.cloud.google.com/', 'console.cloud.google.com')} et connectez-vous avec votre compte Google, puis créez un projet (ou choisissez-en un).`,
+    `Menu <b>API et services › Bibliothèque</b> : cherchez <b>Cloud Vision API</b> et cliquez sur <b>Activer</b>. La facturation doit être activée sur le projet (1 000 requêtes par mois sont gratuites).`,
+    `Menu <b>API et services › Identifiants › Créer des identifiants › Clé API</b>, puis copiez la clé affichée et collez-la dans le champ de saisie de la clé.`,
+  ] : [
+    `Ouvrez ${a('https://aistudio.google.com/apikey', 'aistudio.google.com/apikey')} et connectez-vous avec votre compte Google.`,
+    `Cliquez sur <b>Créer une clé API</b> (« Create API key »). Si Google demande un projet, choisissez d’en créer un nouveau.`,
+    `Copiez la clé affichée (une longue suite de lettres et de chiffres) et collez-la dans le champ de saisie de la clé.`,
+  ];
+  const note = service === 'vision'
+    ? 'Facultatif : l’OCR intégré (Tesseract) fonctionne sans clé et hors ligne.'
+    : 'Gemini offre un quota gratuit limité ; au-delà, ou pour certaines fonctions (amélioration d’image), Google peut demander d’activer la facturation sur votre projet. L’utilisation est alors facturée par Google.';
+  return `<details ${open ? 'open' : ''} style="margin-top:8px;font-size:.78rem;line-height:1.55">
+  <summary style="cursor:pointer;color:var(--gold-l)">Comment obtenir ma clé ?</summary>
+  <ol style="margin:8px 0 0 18px;padding:0">${steps.map(x => `<li style="margin-bottom:4px">${x}</li>`).join('')}</ol>
+  <div style="margin-top:6px;opacity:.6">${note}</div>
+</details>`;
+}
+
+// Fonction IA / OCR sans clé : message adapté (version web = connexion ; bureau = clé dans les réglages).
+function _aiKeyMissingText() {
+  return window.electronAPI && window.electronAPI.isWeb
+    ? 'Connexion requise — connectez-vous avec Google dans les Paramètres (⚙)'
+    : 'Clé API Gemini manquante — configurez-la dans Paramètres (⚙)';
+}
+function _aiKeyMissing() {
+  t(_aiKeyMissingText());
+  if (window.electronAPI && window.electronAPI.isWeb) openOcrSettings();
+}
+
 async function openOcrSettings() {
   if (!window.electronAPI) { t("Disponible uniquement dans l'application Electron"); return; }
   const settings = (await window.electronAPI.getSettings()) || {};
@@ -2634,9 +2667,9 @@ async function openOcrSettings() {
   <input id="gv-api-key" type="password" placeholder="AIzaSy..."
     style="width:100%;padding:7px 10px;background:rgba(0,0,0,.35);border:1px solid rgba(200,150,46,.4);border-radius:3px;color:var(--txt);font-family:monospace;font-size:.82rem;box-sizing:border-box;outline:none">
   <div style="margin-top:7px;font-size:.75rem;opacity:.55">
-    1 000 req./mois gratuites &nbsp;·&nbsp;
-    Activer : console.cloud.google.com → APIs → Cloud Vision API
+    1 000 req./mois gratuites
   </div>
+  ${_keyHelpHtml('vision', false)}
   <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap">
     <div class="mbtn" onclick="saveOcrSettings()"><i class="fa-solid fa-check"></i> Enregistrer</div>
     <div class="mbtn" id="btn-test-gv" onclick="testGoogleVision()"><i class="fa-solid fa-satellite-dish"></i> Tester la connexion</div>
@@ -2647,7 +2680,9 @@ async function openOcrSettings() {
 </div>`;
 
   const geminiKey = settings.geminiKey || '';
-  body += `
+  const isWeb = !!window.electronAPI.isWeb;
+  // Version web : compte Google (clés du lycée automatiques, ou clés personnelles) ; bureau : champ de clé.
+  body += isWeb ? `<div id="acct-box" style="margin-top:18px;padding-top:16px;border-top:1px solid rgba(200,150,46,.2)"></div>` : `
 <div style="margin-top:18px;padding-top:16px;border-top:1px solid rgba(200,150,46,.2)">
   <div style="font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.12em;color:var(--gold);margin-bottom:10px;text-transform:uppercase">Clé API Google Gemini</div>
   <div style="display:flex;gap:6px;align-items:center">
@@ -2658,11 +2693,17 @@ async function openOcrSettings() {
   </div>
   <div style="margin-top:6px;font-size:.72rem;opacity:.55">
     Utilisée pour : Traduction IA · Résumé · Chat avec le PDF · Amélioration d’image IA
-    &nbsp;·&nbsp; <a href="https://aistudio.google.com/apikey" style="color:var(--gold-l);text-decoration:none" target="_blank">aistudio.google.com</a>
   </div>
+  ${_keyHelpHtml('gemini', !geminiKey)}
 </div>`;
 
   openModal(_s('settings.title'), body);
+  if (isWeb) {
+    await window.webAccount.load();
+    window.webAccount.renderBox(document.getElementById('acct-box'));
+    const gv = document.getElementById('gv-key-section');
+    if (gv) gv.remove(); // la clé Vision se gère dans le bloc Compte
+  }
 
   // Appliquer les valeurs sauvegardees
   const radio = document.getElementById('ocr-' + engine);
@@ -2681,13 +2722,13 @@ async function openOcrSettings() {
   // Masquer le bouton "Enregistrer" simple quand Google Vision est actif
   // (il y a deja un bouton Enregistrer dans la section gv-key-section)
   const simpleSave = document.getElementById('gv-save-simple');
-  if (simpleSave) simpleSave.style.display = (engine === 'google') ? 'none' : 'block';
+  if (simpleSave) simpleSave.style.display = (engine === 'google' && !isWeb) ? 'none' : 'block';
 
   // Mettre a jour l'affichage quand on change d'engine
   document.querySelectorAll('input[name="ocr-engine"]').forEach(r => {
     r.addEventListener('change', () => {
       const isGoogle = document.getElementById('ocr-google').checked;
-      if (simpleSave) simpleSave.style.display = isGoogle ? 'none' : 'block';
+      if (simpleSave) simpleSave.style.display = (isGoogle && !isWeb) ? 'none' : 'block';
       toggleOcrEngine();
     });
   });
@@ -7409,6 +7450,12 @@ async function openTranslatePanel() {
   if (!currentPdfDoc) { t('Ouvrez un PDF d\'abord'); return; }
   document.getElementById('tp-overlay').style.display = 'flex';
   document.getElementById('tp-result-wrap').style.display = 'none';
+  if (window.electronAPI.isWeb) {
+    // Version web : la clé vient du compte (réglages), pas de champ ici
+    const kf = document.getElementById('tp-apikey');
+    if (kf && kf.parentElement) kf.parentElement.style.display = 'none';
+    return;
+  }
   // Pre-fill API key from settings if saved
   try {
     const s = await window.electronAPI.getSettings();
@@ -7429,7 +7476,7 @@ async function doTranslate() {
   let apiKey = document.getElementById('tp-apikey').value.trim();
   if (!apiKey) apiKey = await _getAIKey();
   if (!lang) { t('Entrez une langue cible'); return; }
-  if (!apiKey) { t('Clé API Gemini manquante — configurez-la dans Paramètres (⚙)'); return; }
+  if (!apiKey) { _aiKeyMissing(); return; }
 
   const scope = document.getElementById('tp-scope').value;
   const rangeStr = document.getElementById('tp-range').value;
@@ -8265,7 +8312,7 @@ async function doTranslateInPlace() {
   let apiKey = document.getElementById('tp-apikey').value.trim();
   if (!apiKey) apiKey = await _getAIKey();
   if (!lang)   { t('Entrez une langue cible'); return; }
-  if (!apiKey) { t('Clé API Gemini manquante — configurez-la dans Paramètres (⚙)'); return; }
+  if (!apiKey) { _aiKeyMissing(); return; }
 
   const scope    = document.getElementById('tp-scope').value;
   const rangeStr = document.getElementById('tp-range').value;
@@ -8428,7 +8475,7 @@ function closeSummarizePanel() {
 
 async function doSummarize() {
   const apiKey = await _getAIKey();
-  if (!apiKey) { t('Clé API Gemini manquante — configurez-la dans Paramètres (⚙)'); return; }
+  if (!apiKey) { _aiKeyMissing(); return; }
   if (!currentPdfDoc) return;
 
   const btn = document.getElementById('sum-btn');
@@ -8617,7 +8664,7 @@ async function chatSend(event) {
 
   const apiKey = await _getAIKey();
   if (!apiKey) {
-    _chatAddBubble('ai', '⚠️ Clé API Gemini manquante — configurez-la dans Paramètres (⚙).', 'error');
+    _chatAddBubble('ai', '⚠️ ' + _aiKeyMissingText(), 'error');
     return;
   }
   if (!currentPdfDoc) {
@@ -9933,7 +9980,7 @@ async function doEnhance() {
     if (level === 'optimal') {
       aiApiKey = await _getAIKey();
       if (!aiApiKey) {
-        t('Clé API Gemini manquante — configurez-la dans Paramètres (⚙)');
+        _aiKeyMissing();
         return;
       }
     } else if (level === 'espcn') {
