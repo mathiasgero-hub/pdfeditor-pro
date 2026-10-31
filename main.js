@@ -193,13 +193,22 @@ function sendFileToRenderer(filePath) {
 // ─── IPC : Ouvrir un PDF ──────────────────────────────────────────────────────
 ipcMain.handle('open-pdf-dialog', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: 'Ouvrir un ou plusieurs documents PDF',
-    filters: [{ name: 'Documents PDF', extensions: ['pdf'] }],
+    title: 'Ouvrir un ou plusieurs fichiers',
+    filters: [
+      { name: 'Tous les formats pris en charge', extensions: ['pdf', ...IMAGE_EXTS, ...DOC_EXTS] },
+      { name: 'Documents PDF',    extensions: ['pdf'] },
+      { name: 'Images',           extensions: IMAGE_EXTS },
+      { name: 'Documents Word',   extensions: ['docx', 'doc'] },
+      { name: 'Google Docs',      extensions: ['gdoc', 'gsheet', 'gslides'] },
+      { name: 'Texte & Markdown', extensions: ['txt', 'md', 'rtf'] },
+      { name: 'Web (HTML)',       extensions: ['html', 'htm'] },
+    ],
     properties: ['openFile', 'multiSelections']
   });
   if (result.canceled || result.filePaths.length === 0) return null;
-  // Retourne un tableau, même pour un seul fichier
+  // Retourne un tableau, même pour un seul fichier ; les non-PDF sont marqués importType (convertis par le rendu)
   return result.filePaths.map(filePath => {
+    if (path.extname(filePath).toLowerCase() !== '.pdf') return { importType: true, ..._importDescriptor(filePath) };
     const buffer = fs.readFileSync(filePath);
     const stat   = fs.statSync(filePath);
     return { name: path.basename(filePath), size: stat.size, data: buffer.toString('base64'), filePath };
@@ -548,7 +557,11 @@ ipcMain.handle('open-import-dialog', async () => {
     properties: ['openFile']
   });
   if (result.canceled || !result.filePaths.length) return null;
-  const fp  = result.filePaths[0];
+  return _importDescriptor(result.filePaths[0]);
+});
+
+// Décrit un fichier non-PDF à importer : image (données lues), raccourci Google Docs, ou document à convertir
+function _importDescriptor(fp) {
   const ext = path.extname(fp).slice(1).toLowerCase();
 
   // ── Google Docs raccourci (.gdoc / .gsheet / .gslides) ──────────────────────
@@ -572,7 +585,7 @@ ipcMain.handle('open-import-dialog', async () => {
              imageName: path.basename(fp) };
   }
   return { type: 'document', filePath: fp, ext, name: path.basename(fp) };
-});
+}
 
 function _escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');

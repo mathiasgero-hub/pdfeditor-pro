@@ -1076,5 +1076,13 @@ window.PDFE_DICT.id = {
  "Double-cliquez sur « Installer-lanceur.cmd ».": "Klik ganda “Installer-lanceur.cmd”.",
  "Clic droit sur un PDF, « Ouvrir avec », « PDFEdit Or (web) », puis « Toujours utiliser cette application ».": "Klik kanan sebuah PDF, “Open with”, “PDFEdit Or (web)”, lalu “Always use this app”.",
  "Télécharger le lanceur (.zip)": "Unduh peluncur (.zip)",
- "Explications détaillées": "Penjelasan lengkap"
+ "Explications détaillées": "Penjelasan lengkap",
+ "Zoomer sur une zone : tracez un rectangle": "Perbesar area: gambar sebuah persegi panjang",
+ "Zoom sur une zone": "Zoom ke area",
+ "Tracez un rectangle sur la zone à agrandir (Échap pour annuler)": "Gambar persegi panjang di area yang ingin diperbesar (Esc untuk membatalkan)",
+ "Rectangle trop petit : tracez une zone plus grande": "Persegi panjang terlalu kecil: gambar area yang lebih besar",
+ "Tracez le rectangle sur une page": "Gambar persegi panjang di atas sebuah halaman",
+ "Ouvrir un fichier…": "Buka berkas…",
+ "PDF, image, Word, texte, HTML…": "PDF, gambar, Word, teks, HTML…",
+ "Ouvrir un fichier : PDF, image, Word… (⌘O)": "Buka berkas: PDF, gambar, Word… (⌘O)"
 };

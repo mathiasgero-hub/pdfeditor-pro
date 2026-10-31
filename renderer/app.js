@@ -21,7 +21,7 @@ const LANG = {
     // ── Menu Fichier ──────────────────────────────────────────────────────────
     'menu.file'            : 'Fichier',
     'menu.new'             : 'Nouveau',
-    'menu.open'            : 'Ouvrir un PDF…',
+    'menu.open'            : 'Ouvrir un fichier…',
     'menu.import_ocr'      : 'Importer image → PDF (OCR)',
     'menu.save'            : 'Enregistrer',
     'menu.save_as'         : 'Enregistrer sous…',
@@ -146,7 +146,7 @@ const LANG = {
     // ── Toolbar tooltips ─────────────────────────────────────────────────────
     'tip.undo'             : 'Annuler la dernière action (⌘Z)',
     'tip.redo'             : 'Rétablir (⇧⌘Z)',
-    'tip.open'             : 'Ouvrir un PDF',
+    'tip.open'             : 'Ouvrir un fichier (PDF, image, Word…)',
     'tip.save'             : 'Enregistrer (⌘S)',
     'tip.merge'            : 'Fusionner images et PDFs en un seul document',
     'tip.zoom_in'          : 'Zoom avant',
@@ -219,7 +219,7 @@ const LANG = {
     // ── Menu Fichier ──────────────────────────────────────────────────────────
     'menu.file'            : 'File',
     'menu.new'             : 'New',
-    'menu.open'            : 'Open PDF…',
+    'menu.open'            : 'Open a file…',
     'menu.import_ocr'      : 'Import image → PDF (OCR)',
     'menu.save'            : 'Save',
     'menu.save_as'         : 'Save as…',
@@ -344,7 +344,7 @@ const LANG = {
     // ── Toolbar tooltips ─────────────────────────────────────────────────────
     'tip.undo'             : 'Undo last action (⌘Z)',
     'tip.redo'             : 'Redo (⇧⌘Z)',
-    'tip.open'             : 'Open a PDF',
+    'tip.open'             : 'Open a file (PDF, image, Word…)',
     'tip.save'             : 'Save (⌘S)',
     'tip.merge'            : 'Merge images & PDFs into one document',
     'tip.zoom_in'          : 'Zoom in',
@@ -1062,10 +1062,23 @@ async function mergePagesFallback(pdfData, mergedDoc) {
   }
 }
 
+// Ouvrir : un seul choix de fichiers pour les PDF, les images, Word, texte, HTML…
+// Les PDF s'ouvrent comme avant ; les autres formats sont convertis en PDF (ancien « Importer »).
 async function openFile() {
   if (window.electronAPI) {
-    const results = await window.electronAPI.openPDF(); // tableau de fichiers
-    if (!results || results.length === 0) return;
+    const all = await window.electronAPI.openPDF(); // tableau de fichiers
+    if (!all || all.length === 0) return;
+    const pdfs   = all.filter(r => !r.importType);
+    const others = all.filter(r => r.importType);
+    if (pdfs.length) await _openPdfResults(pdfs);
+    for (const o of others) await _importResult(o);
+  } else {
+    document.getElementById('file-inp').click();
+  }
+}
+
+async function _openPdfResults(results) {
+  if (results.length) {
     if (results.length === 1) {
       await handleOpenWith(results[0]);
     } else {
@@ -1109,8 +1122,6 @@ async function openFile() {
         } catch(e) { t('Erreur fusion : ' + e.message); }
       }
     }
-  } else {
-    document.getElementById('file-inp').click();
   }
 }
 
@@ -2398,7 +2409,7 @@ async function _bakeAndGetDoc() {
 // Ancienne approche (CSS zoom) : agrandissait des pixels → flou.
 // Nouvelle approche : PDF.js re-calcule les pages a l'echelle exacte → net.
 async function zoomTo(val) {
-  zoomLevel = Math.min(300, Math.max(40, Math.round(val)));
+  zoomLevel = Math.min(600, Math.max(40, Math.round(val)));
   document.getElementById('zoom-val').textContent = zoomLevel + '%';
   if (tabs[activeTabIdx]) tabs[activeTabIdx].zoomLevel = zoomLevel;
   if (currentPdfDoc) {
@@ -2407,6 +2418,89 @@ async function zoomTo(val) {
   }
 }
 function zoom(dir) { zoomTo(zoomLevel + dir * 20); }
+
+// ─── Zoom sur une zone : on trace un rectangle, la zone remplit alors la fenêtre ──
+let _zoomRegion = null; // { ov, box, x0, y0, drawing } pendant que le mode est actif
+function toggleZoomRegion() {
+  if (_zoomRegion) { _endZoomRegion(); return; }
+  if (!currentPdfDoc) { t("Ouvrez un PDF d'abord"); return; }
+  const vp = document.getElementById('pdf-viewport').getBoundingClientRect();
+  const ov = document.createElement('div');
+  ov.id = 'zoom-rect-overlay';
+  ov.style.cssText = 'position:fixed;left:' + vp.left + 'px;top:' + vp.top + 'px;width:' + vp.width + 'px;height:' + vp.height + 'px;z-index:900;cursor:crosshair;touch-action:none;background:rgba(200,150,46,.04)';
+  const box = document.createElement('div');
+  box.style.cssText = 'position:absolute;display:none;border:2px dashed var(--gold);background:rgba(200,150,46,.15);pointer-events:none';
+  ov.appendChild(box);
+  document.body.appendChild(ov);
+  _zoomRegion = { ov, box, x0: 0, y0: 0, drawing: false };
+  document.getElementById('zbtn-region').classList.add('on');
+  t('Tracez un rectangle sur la zone à agrandir (Échap pour annuler)');
+  ov.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    ov.setPointerCapture(e.pointerId);
+    const r = ov.getBoundingClientRect();
+    _zoomRegion.x0 = e.clientX - r.left; _zoomRegion.y0 = e.clientY - r.top; _zoomRegion.drawing = true;
+  });
+  ov.addEventListener('pointermove', e => {
+    if (!_zoomRegion || !_zoomRegion.drawing) return;
+    const r = ov.getBoundingClientRect();
+    const x = Math.min(Math.max(e.clientX - r.left, 0), r.width), y = Math.min(Math.max(e.clientY - r.top, 0), r.height);
+    box.style.display = 'block';
+    box.style.left = Math.min(x, _zoomRegion.x0) + 'px'; box.style.top = Math.min(y, _zoomRegion.y0) + 'px';
+    box.style.width = Math.abs(x - _zoomRegion.x0) + 'px'; box.style.height = Math.abs(y - _zoomRegion.y0) + 'px';
+  });
+  ov.addEventListener('pointerup', e => {
+    if (!_zoomRegion || !_zoomRegion.drawing) return;
+    const rect = box.getBoundingClientRect();
+    _endZoomRegion();
+    if (rect.width < 12 || rect.height < 12) { t('Rectangle trop petit : tracez une zone plus grande'); return; }
+    zoomToRect(rect);
+  });
+  ov.addEventListener('pointercancel', _endZoomRegion);
+}
+function _endZoomRegion() {
+  if (!_zoomRegion) return;
+  _zoomRegion.ov.remove();
+  _zoomRegion = null;
+  const b = document.getElementById('zbtn-region');
+  if (b) b.classList.remove('on');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && _zoomRegion) _endZoomRegion(); });
+
+// rect : rectangle en coordonnées écran. La page sous le rectangle est zoomée pour que la zone remplisse la fenêtre.
+async function zoomToRect(rect) {
+  const vpEl = document.getElementById('pdf-viewport');
+  const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+  const wraps = Array.from(document.querySelectorAll('.page-wrap'));
+  let wrap = wraps.find(w => { const r = w.getBoundingClientRect(); return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom; });
+  if (!wrap) { // centre hors page : page la plus recouverte par le rectangle
+    let best = 0;
+    wraps.forEach(w => {
+      const r = w.getBoundingClientRect();
+      const ov = Math.max(0, Math.min(rect.right, r.right) - Math.max(rect.left, r.left)) * Math.max(0, Math.min(rect.bottom, r.bottom) - Math.max(rect.top, r.top));
+      if (ov > best) { best = ov; wrap = w; }
+    });
+  }
+  if (!wrap) { t('Tracez le rectangle sur une page'); return; }
+  const wr = wrap.getBoundingClientRect();
+  const l = Math.max(rect.left, wr.left), r2 = Math.min(rect.right, wr.right);
+  const tp = Math.max(rect.top, wr.top), b = Math.min(rect.bottom, wr.bottom);
+  if (r2 - l < 4 || b - tp < 4) { t('Tracez le rectangle sur une page'); return; }
+  const fx = ((l + r2) / 2 - wr.left) / wr.width, fy = ((tp + b) / 2 - wr.top) / wr.height; // centre de la zone, en fraction de la page
+  const pageIdx = wraps.indexOf(wrap);
+  const availW = Math.max(120, vpEl.clientWidth - 60), availH = Math.max(120, vpEl.clientHeight - 48);
+  const factor = Math.min(availW / (r2 - l), availH / (b - tp));
+  zoomLevel = Math.min(600, Math.max(40, Math.round(zoomLevel * factor)));
+  document.getElementById('zoom-val').textContent = zoomLevel + '%';
+  if (tabs[activeTabIdx]) tabs[activeTabIdx].zoomLevel = zoomLevel;
+  const pdf = await _bakeAndGetDoc();
+  await renderMainPages(pdf, baseFitScale * zoomLevel / 100, null, null);
+  const nw = document.querySelectorAll('.page-wrap')[pageIdx];
+  if (nw) {
+    vpEl.scrollTop  = Math.max(0, nw.offsetTop  + fy * nw.offsetHeight - vpEl.clientHeight / 2);
+    vpEl.scrollLeft = Math.max(0, nw.offsetLeft + fx * nw.offsetWidth  - vpEl.clientWidth  / 2);
+  }
+}
 
 // ─── Vue : Adapter / Page double / Plein écran ───────────────────────────────
 
@@ -2883,7 +2977,11 @@ async function importFile() {
   if (!window.electronAPI) { t("Disponible uniquement dans l'application Electron"); return; }
   const result = await window.electronAPI.openImportDialog();
   if (!result) return;
+  await _importResult(result);
+}
 
+// Traite un fichier non-PDF choisi dans le sélecteur (image → OCR, Google Doc, Word/texte/HTML → PDF)
+async function _importResult(result) {
   if (result.type === 'gdoc') {
     // Google Doc : raccourci local — ne contient pas le document
     // On propose l'export PDF direct ou l'ouverture dans le navigateur

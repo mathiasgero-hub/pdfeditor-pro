@@ -63,6 +63,7 @@
 
   // Fichier choisi dans openImportDialog, consommé par convertDocToPdf
   let _pendingImport = null;
+  const _pendingDocs = {}; // documents choisis dans « Ouvrir », en attente de conversion (par nom de fichier)
 
   const IMAGE_EXTS  = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'];
   const MAMMOTH_URL = 'https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js';
@@ -501,10 +502,23 @@
     isWeb: true,
 
     // Ouvrir un PDF (file input)
+    // « Ouvrir » unique : PDF, images, Word, texte, HTML (les non-PDF sont marqués importType pour être convertis par app.js)
     openPDF: async () => {
-      const files = await fileInputPickFiles('.pdf', true);
+      const files = await fileInputPickFiles('.pdf,.docx,.doc,.txt,.md,.html,.htm,.jpg,.jpeg,.png,.webp,.bmp,.gif', true);
       if (!files) return null;
-      return files.map(f => ({ name: f.name, data: f.data, filePath: f.name }));
+      const out = [];
+      for (const f of files) {
+        const ext = f.name.split('.').pop().toLowerCase();
+        if (ext === 'pdf') out.push({ name: f.name, data: f.data, filePath: f.name });
+        else if (IMAGE_EXTS.includes(ext)) {
+          const img = await normalizeImage(f.data, ext);
+          out.push({ importType: true, type: 'image', imageData: img.imageData, imageType: img.imageType, imageName: f.name, name: f.name });
+        } else {
+          _pendingDocs[f.name] = { name: f.name, ext, data: f.data };
+          out.push({ importType: true, type: 'doc', filePath: f.name, ext, name: f.name });
+        }
+      }
+      return out;
     },
 
     // Ouvrir une image
@@ -528,8 +542,9 @@
 
     // Conversion document → PDF (fichier mémorisé par openImportDialog)
     convertDocToPdf: async (filePath, ext) => {
-      const f = _pendingImport;
-      _pendingImport = null;
+      const f = _pendingDocs[filePath] || _pendingImport;
+      delete _pendingDocs[filePath];
+      if (f === _pendingImport) _pendingImport = null;
       if (!f) return { error: 'Aucun fichier à convertir' };
       const pdfName = f.name.replace(/\.[^.]+$/, '') + '.pdf';
       try {

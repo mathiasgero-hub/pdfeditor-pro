@@ -1076,5 +1076,13 @@ window.PDFE_DICT.en = {
  "Double-cliquez sur « Installer-lanceur.cmd ».": "Double-click “Installer-lanceur.cmd”.",
  "Clic droit sur un PDF, « Ouvrir avec », « PDFEdit Or (web) », puis « Toujours utiliser cette application ».": "Right-click a PDF, “Open with”, “PDFEdit Or (web)”, then “Always use this app”.",
  "Télécharger le lanceur (.zip)": "Download the launcher (.zip)",
- "Explications détaillées": "Detailed instructions"
+ "Explications détaillées": "Detailed instructions",
+ "Zoomer sur une zone : tracez un rectangle": "Zoom to an area: draw a rectangle",
+ "Zoom sur une zone": "Zoom to an area",
+ "Tracez un rectangle sur la zone à agrandir (Échap pour annuler)": "Draw a rectangle around the area to enlarge (Esc to cancel)",
+ "Rectangle trop petit : tracez une zone plus grande": "Rectangle too small: draw a larger area",
+ "Tracez le rectangle sur une page": "Draw the rectangle on a page",
+ "Ouvrir un fichier…": "Open a file…",
+ "PDF, image, Word, texte, HTML…": "PDF, image, Word, text, HTML…",
+ "Ouvrir un fichier : PDF, image, Word… (⌘O)": "Open a file: PDF, image, Word… (⌘O)"
 };

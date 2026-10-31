@@ -2,7 +2,7 @@
 window.LANG_ID = {
  "menu.file": "Berkas",
  "menu.new": "Baru",
- "menu.open": "Buka PDF…",
+ "menu.open": "Buka berkas…",
  "menu.import_ocr": "Impor gambar → PDF (OCR)",
  "menu.save": "Simpan",
  "menu.save_as": "Simpan sebagai…",
@@ -112,7 +112,7 @@ window.LANG_ID = {
  "pop.delete": "Hps.",
  "tip.undo": "Batalkan tindakan terakhir (⌘Z)",
  "tip.redo": "Ulangi (⇧⌘Z)",
- "tip.open": "Buka PDF",
+ "tip.open": "Buka berkas (PDF, gambar, Word…)",
  "tip.save": "Simpan (⌘S)",
  "tip.merge": "Gabungkan gambar dan PDF menjadi satu dokumen",
  "tip.zoom_in": "Perbesar",

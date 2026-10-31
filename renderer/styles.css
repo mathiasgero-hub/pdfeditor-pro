@@ -339,6 +339,7 @@ body{
 .ssep{width:1px;height:10px;background:var(--gold-border)}
 #zoom-area{margin-left:auto;display:flex;align-items:center;gap:7px}
 .zbtn{width:18px;height:18px;display:flex;align-items:center;justify-content:center;background:rgba(200,150,46,.1);border:1px solid var(--gold-d);border-radius:2px;color:var(--gold);cursor:pointer;font-size:.6rem;transition:all .15s}
+.zbtn.on{background:var(--gold);color:#1a1a1a}
 .zbtn:hover{background:rgba(200,150,46,.25);border-color:var(--gold)}
 #zoom-val{font-family:'Cinzel',serif;font-size:.58rem;color:var(--txt2);min-width:35px;text-align:center}
 
