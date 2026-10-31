@@ -2376,12 +2376,25 @@ document.getElementById('canvas').addEventListener('dragleave', () => dz.classLi
 document.getElementById('canvas').addEventListener('drop', async e => {
   e.preventDefault();
   dz.classList.remove('drag');
-  const files = [...e.dataTransfer.files].filter(f => f.name.toLowerCase().endsWith('.pdf'));
+  // Chrome/Edge : la poignée du fichier déposé permet « Enregistrer » sur le fichier d'origine (à demander avant le premier await)
+  const dropHandles = new Map();
+  if (window.electronAPI && window.electronAPI.isWeb && window.__registerFileHandle) {
+    [...e.dataTransfer.items].forEach((it, i) => {
+      if (it.kind === 'file' && it.getAsFileSystemHandle) dropHandles.set(i, it.getAsFileSystemHandle().catch(() => null));
+    });
+  }
+  const dropFiles = [...e.dataTransfer.files];
+  const dropPath = async (file) => {
+    const i = dropFiles.indexOf(file);
+    const h = dropHandles.has(i) ? await dropHandles.get(i) : null;
+    return h && h.kind === 'file' ? window.__registerFileHandle(h) : null;
+  };
+  const files = dropFiles.filter(f => f.name.toLowerCase().endsWith('.pdf'));
   if (!files.length) { t('Deposez un ou plusieurs fichiers .pdf'); return; }
   if (files.length === 1) {
     const ab  = await files[0].arrayBuffer();
     const b64 = btoa(String.fromCharCode(...new Uint8Array(ab)));
-    await handleOpenWith({ name: files[0].name, size: files[0].size, data: b64, filePath: null });
+    await handleOpenWith({ name: files[0].name, size: files[0].size, data: b64, filePath: await dropPath(files[0]) });
   } else {
     // Plusieurs fichiers glissés → charger en onglets automatiquement
     for (const file of files) {
@@ -2389,7 +2402,7 @@ document.getElementById('canvas').addEventListener('drop', async e => {
       const b64 = btoa(String.fromCharCode(...new Uint8Array(ab)));
       if (currentPdfDoc) { syncActiveTab(); tabs.push(makeTab()); activeTabIdx = tabs.length - 1; }
       else if (activeTabIdx < 0) { tabs.push(makeTab()); activeTabIdx = 0; }
-      await renderPDFFromData({ name: file.name, size: file.size, data: b64, filePath: null });
+      await renderPDFFromData({ name: file.name, size: file.size, data: b64, filePath: await dropPath(file) });
     }
     t(files.length + ' fichiers ouverts');
   }
@@ -3423,6 +3436,13 @@ async function saveDocument() {
   const hadAnnos = _textAnnoStore.length > 0;
   try { await bakeTextAnnos(); } catch(e) { console.warn('bakeTextAnnos:', e); }
   await flushFormFields();
+  // Version web : on réécrit le fichier d'origine (avec l'accord de la personne) ; sans fichier réel connu, « Enregistrer sous » choisit le dossier
+  if (window.electronAPI.isWeb) {
+    if (!currentFilePath || !window.electronAPI.hasWriteHandle(currentFilePath)) { await saveDocumentAs(); return; }
+    const choice = await askOverwrite(currentPdfName);
+    if (choice === 'cancel') return;
+    if (choice === 'saveas') { await saveDocumentAs(); return; }
+  }
   if (currentFilePath) {
     const res = await window.electronAPI.writeFile(currentFilePath, currentPdfData);
     if (res.success) {
@@ -3435,6 +3455,20 @@ async function saveDocument() {
   } else {
     await saveDocumentAs();
   }
+}
+
+// Demande avant de remplacer le fichier d'origine (version web) : 'overwrite' | 'saveas' | 'cancel'
+function askOverwrite(docName) {
+  return new Promise(resolve => {
+    openChoiceResolve = resolve;
+    const safe = (docName || '').replace(/</g, '&lt;');
+    openModal("Enregistrer le document", ('<div style="margin-bottom:14px;font-size:.85rem">Voulez-vous remplacer le fichier d\u2019origine&nbsp;?<br>' +
+      '<strong>' + safe + '</strong></div>' +
+      '<div style="display:flex;flex-direction:column;gap:8px">' +
+      '<div class="mbtn" style="justify-content:flex-start" onclick="resolveOpenChoice(&quot;overwrite&quot;)"><i class="fa-solid fa-floppy-disk"></i>&nbsp; Remplacer le fichier d\u2019origine</div>' +
+      '<div class="mbtn" style="justify-content:flex-start" onclick="resolveOpenChoice(&quot;saveas&quot;)"><i class="fa-regular fa-folder-open"></i>&nbsp; Choisir un autre emplacement\u2026</div>' +
+      '<div class="mbtn" style="justify-content:flex-start;opacity:.55" onclick="resolveOpenChoice(&quot;cancel&quot;)"><i class="fa-solid fa-xmark"></i>&nbsp; Annuler</div></div>'));
+  });
 }
 
 // ─── Enregistrer sous (choix format + chemin) ────────────────────────────────
@@ -5425,7 +5459,7 @@ async function saveTabBeforeClose(tab) {
   // Si l'onglet actif : flush les champs de formulaire d'abord
   if (tabs[activeTabIdx] === tab) await flushFormFields();
 
-  if (tab.filePath) {
+  if (tab.filePath && (!window.electronAPI.isWeb || window.electronAPI.hasWriteHandle(tab.filePath))) {
     const res = await window.electronAPI.writeFile(tab.filePath, tab.data);
     if (res.success) { tab.savedData = tab.data; return true; }
     t('Erreur sauvegarde : ' + res.error);

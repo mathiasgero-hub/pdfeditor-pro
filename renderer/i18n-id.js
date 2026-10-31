@@ -1084,5 +1084,9 @@ window.PDFE_DICT.id = {
  "Tracez le rectangle sur une page": "Gambar persegi panjang di atas sebuah halaman",
  "Ouvrir un fichier…": "Buka berkas…",
  "PDF, image, Word, texte, HTML…": "PDF, gambar, Word, teks, HTML…",
- "Ouvrir un fichier : PDF, image, Word… (⌘O)": "Buka berkas: PDF, gambar, Word… (⌘O)"
+ "Ouvrir un fichier : PDF, image, Word… (⌘O)": "Buka berkas: PDF, gambar, Word… (⌘O)",
+ "Enregistrer le document": "Simpan dokumen",
+ "Voulez-vous remplacer le fichier d’origine ?": "Apakah Anda ingin mengganti berkas asli?",
+ "Remplacer le fichier d’origine": "Ganti berkas asli",
+ "Choisir un autre emplacement…": "Pilih lokasi lain…"
 };

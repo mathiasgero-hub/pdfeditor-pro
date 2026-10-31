@@ -61,6 +61,23 @@
   // Pending save path (simulated)
   let _pendingSaveName = 'document.pdf';
 
+  // ─── Fichiers natifs (File System Access API : Chrome, Edge) ─────────────────
+  // Un fichier ouvert ou enregistré par les sélecteurs natifs garde sa « poignée » : « Enregistrer » réécrit ce fichier-là,
+  // « Enregistrer sous » laisse choisir le dossier. Le chemin que voit l'application est une clé « fsa:N/nom ».
+  // Sans cette API (Firefox, Safari), on retombe sur le téléchargement habituel.
+  const _fsHandles = new Map();
+  let _fsCount = 0;
+  const _hasFsa = () => typeof window.showSaveFilePicker === 'function' && typeof window.showOpenFilePicker === 'function';
+  function registerHandle(h) { const key = 'fsa:' + (++_fsCount) + '/' + h.name; _fsHandles.set(key, h); return key; }
+  window.__registerFileHandle = registerHandle;
+  async function writeToHandle(h, b64) {
+    if (h.queryPermission && (await h.queryPermission({ mode: 'readwrite' })) !== 'granted') {
+      if ((await h.requestPermission({ mode: 'readwrite' })) !== 'granted') throw new Error("Autorisation d'écriture refusée");
+    }
+    const w = await h.createWritable();
+    try { await w.write(b64toBlob(b64, 'application/octet-stream')); } finally { await w.close(); }
+  }
+
   // Fichier choisi dans openImportDialog, consommé par convertDocToPdf
   let _pendingImport = null;
   const _pendingDocs = {}; // documents choisis dans « Ouvrir », en attente de conversion (par nom de fichier)
@@ -504,12 +521,36 @@
     // Ouvrir un PDF (file input)
     // « Ouvrir » unique : PDF, images, Word, texte, HTML (les non-PDF sont marqués importType pour être convertis par app.js)
     openPDF: async () => {
-      const files = await fileInputPickFiles('.pdf,.docx,.doc,.txt,.md,.html,.htm,.jpg,.jpeg,.png,.webp,.bmp,.gif', true);
+      let files;
+      if (_hasFsa()) {
+        try {
+          const handles = await window.showOpenFilePicker({
+            id: 'pdfedit-open', multiple: true,
+            types: [{ description: 'PDF, images, Word, texte, HTML', accept: {
+              'application/pdf': ['.pdf'],
+              'image/*': ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif'],
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+              'application/msword': ['.doc'],
+              'text/plain': ['.txt', '.md'],
+              'text/html': ['.html', '.htm'] } }]
+          });
+          files = [];
+          for (const h of handles) {
+            const bytes = new Uint8Array(await (await h.getFile()).arrayBuffer());
+            let b64 = '';
+            for (let i = 0; i < bytes.length; i += 8192) b64 += String.fromCharCode.apply(null, bytes.subarray(i, i + 8192));
+            files.push({ name: h.name, data: btoa(b64), filePath: registerHandle(h) });
+          }
+        } catch (e) {
+          if (e && e.name === 'AbortError') return null;
+          files = await fileInputPickFiles('.pdf,.docx,.doc,.txt,.md,.html,.htm,.jpg,.jpeg,.png,.webp,.bmp,.gif', true);
+        }
+      } else files = await fileInputPickFiles('.pdf,.docx,.doc,.txt,.md,.html,.htm,.jpg,.jpeg,.png,.webp,.bmp,.gif', true);
       if (!files) return null;
       const out = [];
       for (const f of files) {
         const ext = f.name.split('.').pop().toLowerCase();
-        if (ext === 'pdf') out.push({ name: f.name, data: f.data, filePath: f.name });
+        if (ext === 'pdf') out.push({ name: f.name, data: f.data, filePath: f.filePath });
         else if (IMAGE_EXTS.includes(ext)) {
           const img = await normalizeImage(f.data, ext);
           out.push({ importType: true, type: 'image', imageData: img.imageData, imageType: img.imageType, imageName: f.name, name: f.name });
@@ -570,8 +611,27 @@
     // Dialogue de sauvegarde (simulé — retourne un nom fictif)
     savePDF: async (defaultName) => {
       _pendingSaveName = defaultName || 'document.pdf';
+      if (_hasFsa()) {
+        try {
+          const h = await window.showSaveFilePicker({
+            id: 'pdfedit-save', suggestedName: _pendingSaveName,
+            types: [
+              { description: 'Document PDF', accept: { 'application/pdf': ['.pdf'] } },
+              { description: 'Image PNG', accept: { 'image/png': ['.png'] } },
+              { description: 'Image JPEG', accept: { 'image/jpeg': ['.jpg', '.jpeg'] } }
+            ]
+          });
+          return { filePath: registerHandle(h), canceled: false };
+        } catch (e) {
+          if (e && e.name === 'AbortError') return { filePath: null, canceled: true };
+          console.warn('[web-shim] sélecteur d\'enregistrement indisponible, téléchargement à la place :', e);
+        }
+      }
       return { filePath: _pendingSaveName, canceled: false };
     },
+
+    // Vrai si ce chemin correspond à un fichier réel qu'on peut réécrire (choisi avec les sélecteurs natifs)
+    hasWriteHandle: (filePath) => _fsHandles.has(filePath),
 
     saveImageDialog: async (defaultName) => {
       return { filePath: defaultName || 'image.png', canceled: false };
@@ -579,6 +639,11 @@
 
     // Écrire un fichier → téléchargement navigateur
     writeFile: async (filePath, data) => {
+      const h = _fsHandles.get(filePath);
+      if (h) {
+        try { await writeToHandle(h, data); return { success: true }; }
+        catch (e) { return { success: false, error: e.message || String(e) }; }
+      }
       const fname = (filePath || _pendingSaveName).split(/[\\/]/).pop();
       downloadB64(data, fname);
       return { success: true };

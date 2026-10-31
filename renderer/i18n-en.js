@@ -1084,5 +1084,9 @@ window.PDFE_DICT.en = {
  "Tracez le rectangle sur une page": "Draw the rectangle on a page",
  "Ouvrir un fichier…": "Open a file…",
  "PDF, image, Word, texte, HTML…": "PDF, image, Word, text, HTML…",
- "Ouvrir un fichier : PDF, image, Word… (⌘O)": "Open a file: PDF, image, Word… (⌘O)"
+ "Ouvrir un fichier : PDF, image, Word… (⌘O)": "Open a file: PDF, image, Word… (⌘O)",
+ "Enregistrer le document": "Save document",
+ "Voulez-vous remplacer le fichier d’origine ?": "Do you want to replace the original file?",
+ "Remplacer le fichier d’origine": "Replace the original file",
+ "Choisir un autre emplacement…": "Choose another location…"
 };
