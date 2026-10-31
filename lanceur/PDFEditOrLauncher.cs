@@ -35,7 +35,7 @@ static class Launcher
     const long MaxBytes = 250L * 1024 * 1024;
     static readonly string[] Exts = { ".pdf", ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif" };
 
-    class Item { public string Id; public string Path; public string Name; public long Size; public DateTime Added; }
+    class Item { public string Id; public string Path; public string Name; public long Size; public DateTime Added; public bool Fetched; }
 
     static readonly object Gate = new object();
     static readonly Dictionary<string, Item> Items = new Dictionary<string, Item>();
@@ -203,17 +203,33 @@ static class Launcher
     static int Answer(string reply, bool noBrowser, string browser, string full)
     {
         if (reply.StartsWith("ERREUR|")) throw new Exception(reply.Substring(7));
+        string fileName = System.IO.Path.GetFileName(full);
+        if (reply == "DEJA") // même fichier demandé deux fois de suite : la première ouverture est encore en cours
+        {
+            if (noBrowser) { Console.Out.WriteLine("DEJA"); Console.Out.Flush(); }
+            else ShowToast("« " + fileName + " » est déjà en cours d'ouverture dans PDFEdit Or…", 3500, false).Join();
+            return 0;
+        }
         if (reply == "ACTIF")
         {
             if (noBrowser) { Console.Out.WriteLine("ACTIF"); Console.Out.Flush(); }
-            else if (!FocusBrowser())
-                Balloon("« " + System.IO.Path.GetFileName(full) + " » est ouvert dans l'onglet PDFEdit Or de votre navigateur.");
+            else
+            {
+                Thread toast = ShowToast("« " + fileName + " » envoyé à PDFEdit Or (onglet déjà ouvert).", 3500, false);
+                FocusBrowser();
+                toast.Join();
+            }
             return 0;
         }
         string[] p = reply.Split('|'); // INACTIF|port|secret|id
         string openUrl = BaseUrl.Split('#')[0] + "#ouvrir=" + p[1] + ":" + p[2] + ":" + p[3];
         if (noBrowser) { Console.Out.WriteLine(openUrl); Console.Out.Flush(); }
-        else OpenBrowser(openUrl, browser);
+        else
+        {
+            Thread toast = ShowToast("Ouverture de « " + fileName + " » dans PDFEdit Or…", 3500, false);
+            OpenBrowser(openUrl, browser);
+            toast.Join();
+        }
         return 0;
     }
 
@@ -242,22 +258,51 @@ static class Launcher
         return SetForegroundWindow(found);
     }
 
-    static void Balloon(string text)
+    // Petite fenêtre d'information en bas à droite (sans prendre le focus), pour montrer que le double-clic a été pris en compte.
+    class ToastForm : Form
     {
-        try
+        protected override bool ShowWithoutActivation { get { return true; } }
+        protected override CreateParams CreateParams
         {
-            using (var ni = new NotifyIcon())
-            {
-                ni.Icon = SystemIcons.Information;
-                ni.Visible = true;
-                ni.BalloonTipTitle = Title;
-                ni.BalloonTipText = text;
-                ni.ShowBalloonTip(5000);
-                for (int i = 0; i < 50; i++) { Application.DoEvents(); Thread.Sleep(100); }
-                ni.Visible = false;
-            }
+            get { CreateParams cp = base.CreateParams; cp.ExStyle |= 0x08000000 | 0x00000080 | 0x00000008; return cp; } // NOACTIVATE | TOOLWINDOW | TOPMOST
         }
-        catch (Exception) { }
+    }
+
+    static Thread ShowToast(string text, int ms, bool background)
+    {
+        var th = new Thread(delegate ()
+        {
+            try
+            {
+                var f = new ToastForm();
+                f.FormBorderStyle = FormBorderStyle.None;
+                f.ShowInTaskbar = false;
+                f.TopMost = true;
+                f.StartPosition = FormStartPosition.Manual;
+                f.BackColor = Color.FromArgb(38, 34, 26);
+                f.Size = new Size(380, 64);
+                Rectangle wa = Screen.PrimaryScreen.WorkingArea;
+                f.Location = new Point(wa.Right - f.Width - 16, wa.Bottom - f.Height - 16);
+                var l = new Label();
+                l.Text = text;
+                l.ForeColor = Color.FromArgb(240, 232, 208);
+                l.Font = new Font("Segoe UI", 10f);
+                l.Dock = DockStyle.Fill;
+                l.Padding = new Padding(14, 0, 10, 0);
+                l.TextAlign = ContentAlignment.MiddleLeft;
+                f.Controls.Add(l);
+                var timer = new System.Windows.Forms.Timer();
+                timer.Interval = ms;
+                timer.Tick += delegate { timer.Stop(); f.Close(); };
+                f.Shown += delegate { timer.Start(); };
+                Application.Run(f);
+            }
+            catch (Exception) { }
+        });
+        th.SetApartmentState(ApartmentState.STA);
+        th.IsBackground = background;
+        th.Start();
+        return th;
     }
 
     // ---------- Serveur (arrière-plan) ----------
@@ -283,7 +328,11 @@ static class Launcher
         lock (Gate) { it = Add(first); lastActivity = DateTime.UtcNow; }
         string openUrl = BaseUrl.Split('#')[0] + "#ouvrir=" + Port + ":" + Secret + ":" + it.Id;
         if (noBrowser) { Console.Out.WriteLine(openUrl); Console.Out.Flush(); }
-        else OpenBrowser(openUrl, browser);
+        else
+        {
+            ShowToast("Ouverture de « " + it.Name + " » dans PDFEdit Or…", 3500, true); // en arrière-plan : le serveur continue
+            OpenBrowser(openUrl, browser);
+        }
 
         while (!stop)
         {
@@ -346,6 +395,12 @@ static class Launcher
         Validate(path);
         lock (Gate)
         {
+            foreach (var kv in Items)
+            {
+                Item o = kv.Value;
+                double age = (DateTime.UtcNow - o.Added).TotalSeconds;
+                if (o.Path == path && ((!o.Fetched && age < 60) || age < 5)) { lastActivity = DateTime.UtcNow; return "DEJA"; }
+            }
             Item it = Add(path);
             lastActivity = DateTime.UtcNow;
             if ((DateTime.UtcNow - lastPoll).TotalSeconds < 30) { Pending.Add(it.Id); return "ACTIF"; } // une page écoute : elle prend le fichier
@@ -437,6 +492,7 @@ static class Launcher
         }
         if (seg[1] == "f")
         {
+            lock (Gate) { it.Fetched = true; }
             using (FileStream fs = File.OpenRead(it.Path))
             {
                 Send(s, 200, "OK", "application/octet-stream", null, fs.Length);

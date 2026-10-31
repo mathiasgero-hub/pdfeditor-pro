@@ -3436,6 +3436,17 @@ async function saveDocument() {
   const hadAnnos = _textAnnoStore.length > 0;
   try { await bakeTextAnnos(); } catch(e) { console.warn('bakeTextAnnos:', e); }
   await flushFormFields();
+  try { await _saveDocumentCore(); }
+  finally { _redrawAfterBake(hadAnnos); }
+}
+
+// Les zones de texte sont gravées dans le PDF avant l'enregistrement et leurs boîtes retirées de l'écran :
+// il faut toujours redessiner la page ensuite (enregistré, annulé ou erreur), sinon le texte « disparaît » de l'éditeur.
+function _redrawAfterBake(hadAnnos) {
+  if (hadAnnos && currentPdfDoc) renderMainPages(currentPdfDoc, baseFitScale * zoomLevel / 100, null, null);
+}
+
+async function _saveDocumentCore() {
   // Version web : on réécrit le fichier d'origine (avec l'accord de la personne) ; sans fichier réel connu, « Enregistrer sous » choisit le dossier
   if (window.electronAPI.isWeb) {
     if (!currentFilePath || !window.electronAPI.hasWriteHandle(currentFilePath)) { await saveDocumentAs(); return; }
@@ -3448,7 +3459,6 @@ async function saveDocument() {
     if (res.success) {
       t("Enregistre : " + currentPdfName);
       if (tabs[activeTabIdx]) tabs[activeTabIdx].savedData = currentPdfData;
-      if (hadAnnos && currentPdfDoc) renderMainPages(currentPdfDoc, baseFitScale * zoomLevel / 100, null, null);
     } else {
       t("Erreur : " + res.error);
     }
@@ -3480,7 +3490,11 @@ async function saveDocumentAs() {
   const hadAnnos = _textAnnoStore.length > 0;
   try { await bakeTextAnnos(); } catch(e) { console.warn('bakeTextAnnos:', e); }
   await flushFormFields();
+  try { await _saveDocumentAsCore(); }
+  finally { _redrawAfterBake(hadAnnos); }
+}
 
+async function _saveDocumentAsCore() {
   const dlg = await window.electronAPI.savePDF(currentPdfName || 'document.pdf');
   if (dlg.canceled || !dlg.filePath) return;
 
@@ -3553,7 +3567,6 @@ async function saveDocumentAs() {
         tabs[activeTabIdx].savedData = currentPdfData;
       }
       t("PDF enregistre : " + currentPdfName);
-      if (hadAnnos && currentPdfDoc) renderMainPages(currentPdfDoc, baseFitScale * zoomLevel / 100, null, null);
     } else {
       t("Exporte : " + fp.split(/[\\/]/).pop());
     }

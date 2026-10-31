@@ -53,3 +53,6 @@ Double-cliquez sur **`Desinstaller-lanceur.cmd`** : le programme et toutes les e
 - Page publique en français, anglais et indonésien : `lanceur/page/index.html`, publiée sur https://pdfedit-or.ardoisia.com/lanceur/ **sans connexion** (bloc `location ^~ /lanceur/` de la configuration nginx, hors passerelle).
 - `PDFEdit-Or-Lanceur.zip` est reconstruit à chaque déploiement par `deploy/ardoisia/build-static.cjs` (fichiers de ce dossier, retours à la ligne Windows) : modifier le lanceur puis redéployer suffit.
 - Dans l'éditeur (version Ardoisia), Paramètres → « Ouverture automatique sous Windows » : explications courtes, téléchargement du .zip et lien vers la page.
+
+## Double-clic répété
+Si vous double-cliquez deux fois de suite sur le même fichier alors que la première ouverture n'est pas encore terminée (navigateur lent à démarrer), la seconde demande est ignorée et une petite fenêtre en bas à droite l'indique : le fichier ne s'ouvre pas deux fois. Chaque ouverture affiche aussi cette petite fenêtre, pour confirmer que le double-clic a été pris en compte.

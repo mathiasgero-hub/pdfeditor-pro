@@ -58,6 +58,8 @@ Write-Host "Installation du lanceur $nom dans $Dossier"
 $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path $csc)) { $csc = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe' }
 if (-not (Test-Path $csc)) { throw "Compilateur .NET Framework 4 introuvable ($csc). Activez .NET Framework 4.x dans les fonctionnalités Windows." }
+# Un ancien lanceur encore en arrière-plan bloquerait le remplacement du programme : on l'arrête (il redémarre au prochain fichier ouvert)
+if (-not $Simuler) { Get-Process -Name PDFEditOrLauncher -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep -Milliseconds 400 }
 New-Item -ItemType Directory -Force -Path $Dossier | Out-Null
 $icone = Join-Path $ici 'icone.ico'
 $args = @('/nologo', '/target:winexe', '/optimize+', "/out:$exe", '/reference:System.Windows.Forms.dll', '/reference:System.Drawing.dll')
