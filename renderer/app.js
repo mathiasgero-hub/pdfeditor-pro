@@ -8285,6 +8285,7 @@ function sigRenderSaved() {
       <div class="sig-saved-use">Utiliser</div>`;
     item.onclick = (e) => {
       if (e.target.closest('.sig-saved-del')) return;
+      closeSigPanel(); // sinon la fenêtre masque la page et le placement est annulé au clic
       _sigPlaceDataUrl(sig.dataUrl);
     };
     list.appendChild(item);
@@ -8340,7 +8341,7 @@ function _sigPlaceDataUrl(dataUrl) {
       if (!wrap) { cleanup(); t('Placement annulé'); return; }
       e.preventDefault(); e.stopPropagation();
       cleanup();
-      await _sigEmbedOnPage(dataUrl, wrap, e, sigPxW, sigAR);
+      _sigStartAdjust(dataUrl, wrap, e, sigPxW, sigAR);
     }
     function onKey(e) { if (e.key === 'Escape') { cleanup(); t('Placement annulé'); } }
 
@@ -8350,6 +8351,119 @@ function _sigPlaceDataUrl(dataUrl) {
   };
   _img.onerror = () => t('Erreur chargement image');
   _img.src = dataUrl;
+}
+
+// ── Ajustement de la signature sur la page avant de la rendre définitive ─────
+// Un cadre sur la page : glisser pour déplacer, tirer un coin pour redimensionner (proportions gardées), Valider / Annuler.
+let _sigAdjust = null;
+function _sigEndAdjust() {
+  if (!_sigAdjust) return;
+  _sigAdjust.box.remove();
+  document.removeEventListener('keydown', _sigAdjust.onKey, true);
+  _sigAdjust = null;
+}
+function _sigStartAdjust(dataUrl, wrap, clickEvent, sigPxW, sigAR) {
+  _sigEndAdjust();
+  const wRect = wrap.getBoundingClientRect();
+  const st = { dataUrl, wrap, ar: sigAR || 0.35, w: sigPxW, h: Math.round(sigPxW * (sigAR || 0.35)) };
+  st.x = clickEvent.clientX - wRect.left - st.w / 2;
+  st.y = clickEvent.clientY - wRect.top - st.h / 2;
+
+  const box = document.createElement('div');
+  box.id = 'sig-adjust';
+  box.style.cssText = 'position:absolute;z-index:9990;border:1.5px dashed var(--gold);background:rgba(200,150,46,.07);cursor:move;touch-action:none;box-sizing:border-box';
+  box.innerHTML = '<img src="' + dataUrl + '" draggable="false" style="width:100%;height:100%;display:block;pointer-events:none;user-select:none">';
+  ['nw', 'ne', 'sw', 'se'].forEach(c => {
+    const h = document.createElement('div');
+    h.dataset.corner = c;
+    const pos = (c[0] === 'n' ? 'top:-7px;' : 'bottom:-7px;') + (c[1] === 'w' ? 'left:-7px;' : 'right:-7px;');
+    h.style.cssText = 'position:absolute;width:14px;height:14px;background:var(--gold);border:1px solid #1a1a1a;border-radius:3px;touch-action:none;cursor:' + (c === 'nw' || c === 'se' ? 'nwse-resize' : 'nesw-resize') + ';' + pos;
+    box.appendChild(h);
+  });
+  const bar = document.createElement('div');
+  bar.style.cssText = 'position:absolute;left:50%;top:100%;transform:translateX(-50%);margin-top:12px;display:flex;gap:6px;white-space:nowrap;cursor:default';
+  bar.innerHTML = '<div class="mbtn" data-act="ok"><i class="fa-solid fa-check"></i> Valider</div><div class="mbtn" data-act="cancel" style="opacity:.8"><i class="fa-solid fa-xmark"></i> Annuler</div>';
+  box.appendChild(bar);
+  wrap.appendChild(box);
+
+  const apply = () => {
+    box.style.left = st.x + 'px'; box.style.top = st.y + 'px';
+    box.style.width = st.w + 'px'; box.style.height = st.h + 'px';
+  };
+  apply();
+
+  let drag = null;
+  box.addEventListener('pointerdown', e => {
+    if (e.target.closest('[data-act]')) return;
+    e.preventDefault();
+    box.setPointerCapture(e.pointerId);
+    const corner = e.target.dataset && e.target.dataset.corner;
+    drag = { corner, px: e.clientX, py: e.clientY, x: st.x, y: st.y, w: st.w, h: st.h };
+  });
+  box.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.px, dy = e.clientY - drag.py;
+    if (!drag.corner) { st.x = drag.x + dx; st.y = drag.y + dy; }
+    else {
+      // redimensionnement proportionnel : le coin opposé reste fixe
+      const east = drag.corner[1] === 'e', south = drag.corner[0] === 's';
+      let w = Math.max(24, drag.w + (east ? dx : -dx));
+      const h = w * st.ar;
+      st.w = w; st.h = h;
+      st.x = east ? drag.x : drag.x + drag.w - w;
+      st.y = south ? drag.y : drag.y + drag.h - h;
+    }
+    apply();
+  });
+  const endDrag = () => { drag = null; };
+  box.addEventListener('pointerup', endDrag);
+  box.addEventListener('pointercancel', endDrag);
+
+  const onKey = e => {
+    if (e.key === 'Escape') { e.stopPropagation(); _sigEndAdjust(); t('Placement annulé'); }
+    else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); _sigValidate(); }
+  };
+  document.addEventListener('keydown', onKey, true);
+  bar.addEventListener('click', e => {
+    const act = e.target.closest('[data-act]');
+    if (!act) return;
+    if (act.dataset.act === 'ok') _sigValidate();
+    else { _sigEndAdjust(); t('Placement annulé'); }
+  });
+  _sigAdjust = { box, st, onKey };
+  t('Déplacez ou redimensionnez la signature, puis cliquez sur Valider');
+}
+
+async function _sigValidate() {
+  if (!_sigAdjust) return;
+  const { st } = _sigAdjust;
+  const wrap = st.wrap;
+  _sigEndAdjust();
+  if (!wrap.isConnected) { t('Placement annulé'); return; }
+  await _sigEmbedAt(st.dataUrl, parseInt(wrap.dataset.page) || 1, st.x, st.y, st.w, st.h);
+}
+
+// Grave l'image dans le PDF : (x, y) = coin haut-gauche et (w, h) = taille, en pixels écran relatifs à la page
+async function _sigEmbedAt(dataUrl, pageNum, xPx, yPx, wPx, hPx) {
+  const scale = baseFitScale * zoomLevel / 100;
+  try {
+    const { PDFDocument } = PDFLib;
+    const pjsPage = await currentPdfDoc.getPage(pageNum);
+    const vp      = pjsPage.getViewport({ scale: 1 });
+    const doc  = await PDFDocument.load(base64ToBytes(currentPdfData), { ignoreEncryption: true });
+    const page = doc.getPages()[pageNum - 1];
+    const b64  = dataUrl.split(',')[1];
+    let pngEmb;
+    try { pngEmb = await doc.embedPng(base64ToBytes(b64)); }
+    catch { pngEmb = await doc.embedJpg(base64ToBytes(b64)); }
+    page.drawImage(pngEmb, { x: xPx / scale, y: vp.height - (yPx + hPx) / scale, width: wPx / scale, height: hPx / scale });
+    const saved = await doc.save({ useObjectStreams: false });
+    await fastRerenderPage(bytesToBase64(saved), [pageNum]);
+    t('Signature placée ✓');
+  } catch (err) {
+    console.error('Sig embed error:', err);
+    t('Erreur : ' + err.message);
+  }
 }
 
 async function _sigEmbedOnPage(dataUrl, wrap, clickEvent, sigPxW, sigAR) {

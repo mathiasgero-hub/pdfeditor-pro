@@ -1088,5 +1088,6 @@ window.PDFE_DICT.en = {
  "Enregistrer le document": "Save document",
  "Voulez-vous remplacer le fichier d’origine ?": "Do you want to replace the original file?",
  "Remplacer le fichier d’origine": "Replace the original file",
- "Choisir un autre emplacement…": "Choose another location…"
+ "Choisir un autre emplacement…": "Choose another location…",
+ "Déplacez ou redimensionnez la signature, puis cliquez sur Valider": "Move or resize the signature, then click Confirm"
 };

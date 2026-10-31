@@ -1088,5 +1088,6 @@ window.PDFE_DICT.id = {
  "Enregistrer le document": "Simpan dokumen",
  "Voulez-vous remplacer le fichier d’origine ?": "Apakah Anda ingin mengganti berkas asli?",
  "Remplacer le fichier d’origine": "Ganti berkas asli",
- "Choisir un autre emplacement…": "Pilih lokasi lain…"
+ "Choisir un autre emplacement…": "Pilih lokasi lain…",
+ "Déplacez ou redimensionnez la signature, puis cliquez sur Valider": "Geser atau ubah ukuran tanda tangan, lalu klik Konfirmasi"
 };
