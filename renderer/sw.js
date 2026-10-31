@@ -4,7 +4,7 @@
  */
 
 // Incrémenter à chaque déploiement pour purger l'ancien cache
-const CACHE_NAME = 'pdfedit-v9';
+const CACHE_NAME = 'pdfedit-v13';
 
 // Fichiers à mettre en cache au premier chargement
 const PRECACHE = [
@@ -14,6 +14,7 @@ const PRECACHE = [
   '/styles.css',
   '/web-shim.js',
   '/web-account.js',
+  '/web-launcher.js',
   '/manifest.json',
   '/icon.png',
   '/icon.ico',

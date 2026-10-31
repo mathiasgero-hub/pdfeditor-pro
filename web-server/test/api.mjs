@@ -161,6 +161,32 @@ try {
   assert.equal(cb.status, 302);
   assert.equal(cb.headers.get('location'), '/?login=state');
 
+  // --- application de bureau : jeton Bearer (même jeton signé que le cookie) et connexion par le navigateur système ---
+  const tokenOf = (c) => c.split('=')[1];
+  const bearer = (c) => ({ authorization: `Bearer ${tokenOf(c)}` });
+  assert.equal((await j(await fetch(`${base}/api/me`, { headers: bearer(school) }))).user.school, true);
+  assert.equal((await j(await fetch(`${base}/api/me`, { headers: { authorization: 'Bearer ' + tokenOf(school).slice(0, -3) + 'xyz' } }))).user, null, 'jeton falsifié');
+  r = await j(await post(M, { ...bearer(school), 'x-gemini-key': PERSONAL }, GEN));
+  assert.equal(r.status, 200); assert.equal(lastKey(), SCHOOL_GEMINI, 'jeton du lycée : clé du lycée');
+  r = await j(await post(M, bearer(personal), GEN));
+  assert.equal(r.status, 403); assert.equal(r.code, 'key');
+  assert.equal((await post('/api/vision', bearer(school), VIS)).status, 200);
+
+  const NONCE = 'a'.repeat(43);
+  const dl = await fetch(`${base}/auth/login?desktop=${NONCE}`, { redirect: 'manual' });
+  assert.equal(dl.status, 302);
+  const dcks = dl.headers.getSetCookie().join(' ');
+  assert.ok(dcks.includes('pdfe_mode=desktop') && dcks.includes(`pdfe_nonce=${NONCE}`));
+  const badNonce = await fetch(`${base}/auth/login?desktop=court`, { redirect: 'manual' });
+  assert.ok(badNonce.headers.getSetCookie().join(' ').includes('pdfe_mode=page'), 'nonce invalide : connexion normale');
+  // retour avec un état invalide en mode bureau : page d'échec (pas de redirection, pas de jeton)
+  cb = await fetch(`${base}/auth/callback?code=x&state=y`, { headers: { cookie: `pdfe_state=abc; pdfe_mode=desktop; pdfe_nonce=${NONCE}` }, redirect: 'manual' });
+  assert.equal(cb.status, 200); assert.ok((await cb.text()).includes('a échoué'));
+  // récupération du jeton : code invalide, rien en attente
+  const claim = (body) => post('/api/desktop/claim', {}, body);
+  assert.equal((await claim({ nonce: 'court' })).status, 400);
+  assert.deepEqual(await (await claim({ nonce: NONCE })).json(), { pending: true });
+
   // --- les clés personnelles n'ont laissé aucune trace dans les journaux ---
   for (const k of [PERSONAL, BAD, SCHOOL_GEMINI, SCHOOL_VISION]) assert.ok(!log.includes(k), `clé présente dans les journaux : ${k.slice(0, 8)}…`);
 

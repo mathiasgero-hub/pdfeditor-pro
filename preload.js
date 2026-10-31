@@ -79,6 +79,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   aiChat: (messages, apiKey) =>
     ipcRenderer.invoke('ai-chat', { messages, apiKey }),
 
+  // ─── Compte du lycée (Google) ────────────────────────────────────────────────
+  acctMe:          () => ipcRenderer.invoke('acct-me'),
+  acctLogin:       () => ipcRenderer.invoke('acct-login'),
+  acctLoginCancel: () => ipcRenderer.invoke('acct-login-cancel'),
+  acctLogout:      () => ipcRenderer.invoke('acct-logout'),
+
   // ─── Sauvegarder une image ───────────────────────────────────────────────────
   saveImageDialog: (defaultName) => ipcRenderer.invoke('save-image-dialog', { defaultName }),
 

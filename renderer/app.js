@@ -464,7 +464,21 @@ function applyLang(lang) {
   document.getElementById('pgsize-lock-btn')?.setAttribute('title', _s('pgsize.lock_tip'));
 }
 
+/** Choix de la langue dans les Paramètres : mémorisé dans le cookie partagé avec le portail Ardoisia (ard_lang), puis la page est rechargée. */
+function setAppLang(l) {
+  try {
+    const domain = /(^|\.)ardoisia\.com$/.test(location.hostname) ? '; Domain=.ardoisia.com' : '';
+    document.cookie = 'ard_lang=' + l + domain + '; Path=/; Max-Age=31536000; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
+  } catch { /* cookies indisponibles */ }
+  location.reload();
+}
+
 async function loadLang() {
+  // Version Ardoisia : la langue choisie sur le portail (cookie ard_lang) l'emporte ; l'indonésien passe par LANG.id (menus), le reste du texte
+  // est traduit par i18n.js.
+  const portal = (document.cookie.match(/(?:^|;\s*)ard_lang=(fr|en|id)/) || [])[1];
+  if (window.LANG_ID) LANG.id = window.LANG_ID;
+  if (portal) { _lang = portal; applyLang(); return; }
   try {
     const s = window.electronAPI ? await window.electronAPI.getSettings() : {};
     _lang = (s && s.lang) || 'fr';
@@ -843,7 +857,8 @@ async function handleOpenWith(result) {
     await renderPDFFromData(result);
     return;
   }
-  const choice = await askOpenChoice(result.name);
+  // Fichier envoyé par le lanceur Windows : toujours dans un nouvel onglet de l'éditeur, sans question
+  const choice = window.__forceNewTab ? 'tab' : await askOpenChoice(result.name);
   if (choice === 'cancel') return;
 
   if (choice === 'tab') {
@@ -2622,15 +2637,65 @@ function _keyHelpHtml(service, open) {
 </details>`;
 }
 
+// Application de bureau : bloc « Compte du lycée » des réglages (connexion Google par le navigateur système).
+// Compte du lycée connecté = clés du lycée via le serveur (les champs de clé personnelle disparaissent).
+async function _deskAcctRender(box, onSchool) {
+  if (!box) return;
+  const api = window.electronAPI;
+  let user = null;
+  try { user = (await api.acctMe()).user; } catch {}
+  const el = (tag, style, txt) => { const n = document.createElement(tag); if (style) n.style.cssText = style; if (txt) n.textContent = txt; return n; };
+  const btn = (label, fn) => { const b = el('div', '', label); b.className = 'mbtn'; b.onclick = fn; return b; };
+  const note = 'margin:0 0 8px;font-size:.8rem;line-height:1.5';
+  box.replaceChildren(el('div', "font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.12em;color:var(--gold);margin-bottom:10px;text-transform:uppercase", 'Compte du lycée'));
+  const reopen = () => openOcrSettings();
+  const logout = btn('Se déconnecter', async () => { await api.acctLogout(); reopen(); });
+
+  if (!user) {
+    const status = el('div', 'margin-top:8px;font-size:.78rem;opacity:.75');
+    const row = el('div', 'display:flex;gap:10px;flex-wrap:wrap');
+    const login = btn('Se connecter avec Google', async () => {
+      row.replaceChildren(btn('Annuler', () => api.acctLoginCancel()));
+      status.textContent = 'En attente de la connexion dans votre navigateur… (vous avez 5 minutes)';
+      const res = await api.acctLogin();
+      if (res.user) { t(res.user.school ? 'Connecté — clés du lycée activées' : 'Connecté — ce compte n’est pas un compte du lycée'); reopen(); return; }
+      t(res.error || 'Connexion impossible');
+      reopen();
+    });
+    row.append(login);
+    box.append(
+      el('p', note, 'Avec un compte @frenchschooljakarta.com, les fonctions IA (traduction, résumé, chat, amélioration d’image) et l’OCR Google Vision fonctionnent sans clé. Votre navigateur s’ouvrira pour vous connecter avec Google.'),
+      el('p', 'margin:0 0 10px;font-size:.74rem;opacity:.6', 'Autre compte, ou sans connexion : utilisez votre propre clé API, dans les champs ci-dessous.'),
+      row, status);
+    return;
+  }
+  if (user.school) {
+    box.append(
+      el('p', note, user.name || user.email),
+      el('p', 'margin:0 0 10px;padding:8px 10px;border:1px solid rgba(46,204,113,.3);background:rgba(46,204,113,.08);border-radius:4px;font-size:.8rem',
+        'Compte du lycée (' + user.email + ') : fonctions IA et OCR Google Vision incluses. Aucune clé à saisir.'),
+      logout);
+    // Plus de champs de clé personnelle
+    for (const id of ['gv-key-section', 'gemini-key-block']) { const n = document.getElementById(id); if (n) n.remove(); }
+    const simple = document.getElementById('gv-save-simple'); if (simple) simple.style.display = 'block';
+    if (onSchool) onSchool();
+    return;
+  }
+  box.append(
+    el('p', note, user.email),
+    el('p', 'margin:0 0 10px;font-size:.78rem;opacity:.75', 'Ce n’est pas un compte du lycée : utilisez votre propre clé API, dans les champs ci-dessous.'),
+    logout);
+}
+
 // Fonction IA / OCR sans clé : message adapté (version web = connexion ; bureau = clé dans les réglages).
 function _aiKeyMissingText() {
   return window.electronAPI && window.electronAPI.isWeb
     ? 'Connexion requise — connectez-vous avec Google dans les Paramètres (⚙)'
-    : 'Clé API Gemini manquante — configurez-la dans Paramètres (⚙)';
+    : 'Clé API Gemini manquante — ajoutez-la dans Paramètres (⚙) ou connectez-vous avec un compte du lycée';
 }
 function _aiKeyMissing() {
   t(_aiKeyMissingText());
-  if (window.electronAPI && window.electronAPI.isWeb) openOcrSettings();
+  openOcrSettings();
 }
 
 async function openOcrSettings() {
@@ -2644,10 +2709,13 @@ async function openOcrSettings() {
   <div style="font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.12em;color:var(--gold);margin-bottom:10px;text-transform:uppercase">${_s('settings.lang')}</div>
   <div style="display:flex;gap:10px">
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.88rem">
-      <input type="radio" name="app-lang" id="lang-fr" value="fr" onchange="applyLang('fr')"> <strong>Français</strong>
+      <input type="radio" name="app-lang" id="lang-fr" value="fr" onchange="setAppLang('fr')"> <strong>Français</strong>
     </label>
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.88rem">
-      <input type="radio" name="app-lang" id="lang-en" value="en" onchange="applyLang('en')"> <strong>English</strong>
+      <input type="radio" name="app-lang" id="lang-en" value="en" onchange="setAppLang('en')"> <strong>English</strong>
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.88rem">
+      <input type="radio" name="app-lang" id="lang-id" value="id" onchange="setAppLang('id')"> <strong>Bahasa Indonesia</strong>
     </label>
   </div>
 </div>
@@ -2681,9 +2749,11 @@ async function openOcrSettings() {
 
   const geminiKey = settings.geminiKey || '';
   const isWeb = !!window.electronAPI.isWeb;
+  let noKeySection = isWeb; // vrai quand les champs de clé n'existent pas (version web, ou compte du lycée connecté)
   // Version web : compte Google (clés du lycée automatiques, ou clés personnelles) ; bureau : champ de clé.
-  body += isWeb ? `<div id="acct-box" style="margin-top:18px;padding-top:16px;border-top:1px solid rgba(200,150,46,.2)"></div>` : `
-<div style="margin-top:18px;padding-top:16px;border-top:1px solid rgba(200,150,46,.2)">
+  body += isWeb ? `<div id="acct-box" style="margin-top:18px;padding-top:16px;border-top:1px solid rgba(200,150,46,.2)"></div>`
+    : `<div id="acct-box-desk" style="margin-top:18px;padding-top:16px;border-top:1px solid rgba(200,150,46,.2)"></div>` + `
+<div id="gemini-key-block" style="margin-top:18px;padding-top:16px;border-top:1px solid rgba(200,150,46,.2)">
   <div style="font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.12em;color:var(--gold);margin-bottom:10px;text-transform:uppercase">Clé API Google Gemini</div>
   <div style="display:flex;gap:6px;align-items:center">
     <input id="gemini-api-key" type="password" placeholder="Collez votre clé Gemini"
@@ -2703,6 +2773,9 @@ async function openOcrSettings() {
     window.webAccount.renderBox(document.getElementById('acct-box'));
     const gv = document.getElementById('gv-key-section');
     if (gv) gv.remove(); // la clé Vision se gère dans le bloc Compte
+  } else {
+    // Application de bureau : compte du lycée (clés du lycée via le serveur) ou clés personnelles ci-dessous
+    await _deskAcctRender(document.getElementById('acct-box-desk'), () => { noKeySection = true; });
   }
 
   // Appliquer les valeurs sauvegardees
@@ -2722,13 +2795,13 @@ async function openOcrSettings() {
   // Masquer le bouton "Enregistrer" simple quand Google Vision est actif
   // (il y a deja un bouton Enregistrer dans la section gv-key-section)
   const simpleSave = document.getElementById('gv-save-simple');
-  if (simpleSave) simpleSave.style.display = (engine === 'google' && !isWeb) ? 'none' : 'block';
+  if (simpleSave) simpleSave.style.display = (engine === 'google' && !noKeySection) ? 'none' : 'block';
 
   // Mettre a jour l'affichage quand on change d'engine
   document.querySelectorAll('input[name="ocr-engine"]').forEach(r => {
     r.addEventListener('change', () => {
       const isGoogle = document.getElementById('ocr-google').checked;
-      if (simpleSave) simpleSave.style.display = (isGoogle && !isWeb) ? 'none' : 'block';
+      if (simpleSave) simpleSave.style.display = (isGoogle && !noKeySection) ? 'none' : 'block';
       toggleOcrEngine();
     });
   });
@@ -2738,13 +2811,17 @@ async function saveOcrSettings() {
   if (!window.electronAPI) return;
   const radio  = document.querySelector('input[name="ocr-engine"]:checked');
   const engine = radio ? radio.value : 'tesseract';
-  const apiKey = (document.getElementById('gv-api-key') || {}).value || '';
-  const geminiKey = ((document.getElementById('gemini-api-key') || {}).value || '').trim();
+  const gvInput = document.getElementById('gv-api-key');
+  const gmInput = document.getElementById('gemini-api-key');
   const langRadio = document.querySelector('input[name="app-lang"]:checked');
   const lang = langRadio ? langRadio.value : _lang;
   const prev = (await window.electronAPI.getSettings()) || {};
   delete prev.openaiKey; // ancienne clé OpenAI, plus utilisée
-  await window.electronAPI.saveSettings({ ...prev, ocrEngine: engine, googleVisionKey: apiKey, geminiKey, lang });
+  const next = { ...prev, ocrEngine: engine, lang };
+  // Un champ absent (version web, compte du lycée) ne doit jamais effacer une clé enregistrée
+  if (gvInput) next.googleVisionKey = gvInput.value || '';
+  if (gmInput) next.geminiKey = (gmInput.value || '').trim();
+  await window.electronAPI.saveSettings(next);
   // Appliquer la langue immédiatement
   applyLang(lang);
   closeModal();
@@ -6355,7 +6432,7 @@ async function doApplyHF() {
 
     const pages      = doc.getPages();
     const totalPages = pages.length;
-    const today      = new Date().toLocaleDateString('fr-FR');
+    const today      = new Date().toLocaleDateString(window.PDFE_LOCALE || 'fr-FR');
     const fileName   = currentPdfName || '';
 
     for (let i = 0; i < totalPages; i++) {
@@ -6739,7 +6816,7 @@ async function quickApplyHFRight() {
   const fText = (document.getElementById('rp-ftr-r')?.value || '').trim();
   if (!hText && !fText) { t('Saisissez un texte'); return; }
 
-  const today    = new Date().toLocaleDateString('fr-FR');
+  const today    = new Date().toLocaleDateString(window.PDFE_LOCALE || 'fr-FR');
   const fileName = currentPdfName || '';
 
   function resolveVars(text, pageNum, totalPages) {
@@ -8268,6 +8345,17 @@ function _sampleBg(ctx, cx, cy, cw, ch) {
   return [Math.round(r/n), Math.round(g/n), Math.round(b/n)];
 }
 
+// ── Couleur du texte traduit : sombre et la plus éloignée du fond (clair sur fond très sombre) ──
+function _pickTextColor(bg) {
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  const L = 0.2126 * lin(bg[0]) + 0.7152 * lin(bg[1]) + 0.0722 * lin(bg[2]);
+  const dark = [15, 15, 25];
+  const Ld = 0.2126 * lin(dark[0]) + 0.7152 * lin(dark[1]) + 0.0722 * lin(dark[2]);
+  const cDark = (L + 0.05) / (Ld + 0.05);
+  const cLight = 1.05 / (L + 0.05);
+  return cDark >= 4.5 || cDark >= cLight ? dark : [255, 255, 255];
+}
+
 // ── Sample dominant foreground (text) color in a canvas region ───────────────
 function _sampleFg(ctx, cx, cy, cw, ch, bg) {
   const [br, bg2, bb2] = bg;
@@ -8394,7 +8482,8 @@ async function doTranslateInPlace() {
 
         // Sample bg and fg colors
         const bgRGB = _sampleBg(ctx, cx2, cy2, cw2, ch2);
-        const fgRGB = _sampleFg(ctx, cx2, cy2, cw2, ch2, bgRGB);
+        // Texte traduit : toujours lisible, couleur sombre la plus contrastée avec le fond (au lieu de la couleur d'origine, souvent grisée par l'anticrénelage)
+        const fgRGB = _pickTextColor(bgRGB);
 
         // ④a Erase original text with background color
         ctx.fillStyle = `rgb(${bgRGB[0]},${bgRGB[1]},${bgRGB[2]})`;
@@ -8886,7 +8975,7 @@ function _renderHistory() {
       <div class="hist-dot" style="background:${_histColor(e.op)}"></div>
       <div>
         <div class="hist-op"><b>${e.op}</b>${e.detail ? ' — ' + e.detail : ''}</div>
-        <div class="hist-time">${hm} · ${d.toLocaleDateString('fr-FR')}</div>
+        <div class="hist-time">${hm} · ${d.toLocaleDateString(window.PDFE_LOCALE || 'fr-FR')}</div>
       </div>
     </div>`;
   }).join('');
@@ -8909,7 +8998,7 @@ function clearHistory() {
 function exportHistory() {
   if (!_modHistory.length) { t('Historique vide'); return; }
   const lines = _modHistory.map(e =>
-    `[${e.time.toLocaleString('fr-FR')}] ${e.op}${e.detail ? ' — ' + e.detail : ''}`
+    `[${e.time.toLocaleString(window.PDFE_LOCALE || 'fr-FR')}] ${e.op}${e.detail ? ' — ' + e.detail : ''}`
   ).join('\n');
   const hdr = `Historique PDFEditor — ${currentPdfName || 'document'}\n${'═'.repeat(60)}\n`;
   const blob = new Blob([hdr + lines], {type:'text/plain'});
@@ -10492,7 +10581,7 @@ function exportA11yReport() {
   const icons = { pass:'[OK]', fail:'[ERREUR]', warn:'[AVERTISSEMENT]', info:'[INFO]' };
   const lines = _a11yResults.map(r => `${icons[r.status]} ${r.label}\n   ${r.detail}`).join('\n\n');
   const score = Math.round(_a11yResults.filter(r=>r.status==='pass').length/_a11yResults.length*100);
-  const hdr   = `Rapport Accessibilité PDF/UA\nDocument : ${currentPdfName||'inconnu'}\nDate : ${new Date().toLocaleString('fr-FR')}\nScore : ${score}%\n${'═'.repeat(50)}\n\n`;
+  const hdr   = `Rapport Accessibilité PDF/UA\nDocument : ${currentPdfName||'inconnu'}\nDate : ${new Date().toLocaleString(window.PDFE_LOCALE || 'fr-FR')}\nScore : ${score}%\n${'═'.repeat(50)}\n\n`;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([hdr+lines], {type:'text/plain'}));
   a.download = 'accessibilite_' + (currentPdfName||'rapport').replace(/\.pdf$/i,'') + '.txt';
@@ -10920,7 +11009,7 @@ function exportPreflightReport() {
   const icons={pass:'[OK]',fail:'[ERREUR]',warn:'[AVERTISSEMENT]',info:'[INFO]'};
   const score=Math.round(_pflResults.filter(r=>r.status==='pass').length/_pflResults.length*100);
   const lines=_pflResults.map(r=>`${icons[r.status]} ${r.label}\n   ${r.detail}`).join('\n\n');
-  const hdr=`Rapport Préflighting — PDFEditor Pro\nDocument : ${currentPdfName||'—'}\nDate : ${new Date().toLocaleString('fr-FR')}\nScore : ${score}%\n${'═'.repeat(55)}\n\n`;
+  const hdr=`Rapport Préflighting — PDFEditor Pro\nDocument : ${currentPdfName||'—'}\nDate : ${new Date().toLocaleString(window.PDFE_LOCALE || 'fr-FR')}\nScore : ${score}%\n${'═'.repeat(55)}\n\n`;
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([hdr+lines],{type:'text/plain'}));
   a.download='preflight_'+(currentPdfName||'doc').replace(/\.pdf$/i,'')+'.txt';
@@ -11047,7 +11136,7 @@ function exportStdReport() {
   if (!_stdResults.length) return;
   const score=Math.round(_stdResults.filter(r=>r.ok).length/_stdResults.length*100);
   const lines=_stdResults.map(r=>`[${r.ok?'OK':'ERREUR'}] ${r.label}\n   ${r.detail}`).join('\n\n');
-  const hdr=`Rapport Conformité ${_stdNames[_stdTarget]||''} — PDFEditor Pro\nDocument : ${currentPdfName||'—'}\nDate : ${new Date().toLocaleString('fr-FR')}\nScore : ${score}%\n${'═'.repeat(55)}\n\n`;
+  const hdr=`Rapport Conformité ${_stdNames[_stdTarget]||''} — PDFEditor Pro\nDocument : ${currentPdfName||'—'}\nDate : ${new Date().toLocaleString(window.PDFE_LOCALE || 'fr-FR')}\nScore : ${score}%\n${'═'.repeat(55)}\n\n`;
   const a=document.createElement('a');
   a.href=URL.createObjectURL(new Blob([hdr+lines],{type:'text/plain'}));
   a.download='conformite_'+(currentPdfName||'doc').replace(/\.pdf$/i,'')+'.txt';

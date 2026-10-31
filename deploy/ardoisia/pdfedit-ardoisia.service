@@ -1,0 +1,21 @@
+[Unit]
+Description=PDFEdit Or — version Ardoisia (pdfedit-or.ardoisia.com, API 127.0.0.1:4960)
+After=network.target
+
+[Service]
+Type=simple
+User=pdfeditardoisia
+Group=pdfeditardoisia
+WorkingDirectory=/home/pdfeditardoisia/app
+EnvironmentFile=/home/pdfeditardoisia/app/.env
+ExecStart=/usr/bin/node server.js
+Restart=on-failure
+RestartSec=3
+SyslogIdentifier=pdfedit-ardoisia
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

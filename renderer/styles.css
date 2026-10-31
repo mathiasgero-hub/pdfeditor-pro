@@ -343,7 +343,7 @@ body{
 #zoom-val{font-family:'Cinzel',serif;font-size:.58rem;color:var(--txt2);min-width:35px;text-align:center}
 
 /* ─── TOAST ─── */
-#toast{position:fixed;bottom:46px;left:50%;transform:translateX(-50%);background:var(--bg-menu);border:1px solid var(--gold);border-radius:4px;padding:9px 20px;font-family:'Cormorant Garamond',serif;font-size:.88rem;color:var(--gold-l);z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+#toast{position:fixed;bottom:46px;left:50%;transform:translateX(-50%);background:var(--bg-menu);border:1px solid var(--gold);border-radius:4px;padding:9px 20px;font-family:'Cormorant Garamond',serif;font-size:.88rem;color:var(--gold-l);z-index:20000;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
 #toast.show{opacity:1}
 
 /* ─── MODAL ─── */

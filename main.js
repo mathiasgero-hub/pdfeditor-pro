@@ -1,11 +1,12 @@
 'use strict';
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, safeStorage } = require('electron');
 const { createWorker } = require('tesseract.js');
 const path  = require('path');
 const fs    = require('fs');
 const os    = require('os');
 const https = require('https');
+const crypto = require('crypto');
 const http  = require('http');
 
 let mainWindow;
@@ -348,14 +349,97 @@ ipcMain.handle('open-recent-file', async (event, filePath) => {
   } catch(e) { return { error: e.message }; }
 });
 
+// ─── Compte du lycée (Google) : fonctions IA et OCR sans clé personnelle ─────────
+// Un compte @frenchschooljakarta.com utilise les clés du lycée, qui restent sur le serveur (jamais dans l'installeur) :
+// les appels Gemini / Google Vision passent alors par le serveur de PDFEdit. Les autres comptes (ou sans connexion)
+// utilisent leur propre clé API, enregistrée dans les paramètres, et appellent Google directement.
+// Connexion : navigateur système (Google interdit la connexion dans une fenêtre intégrée), puis le serveur remet
+// à l'application un jeton de session signé, une seule fois. Il est gardé chiffré (safeStorage) dans userData.
+const SERVER_URL = process.env.PDFEDIT_SERVER || 'https://pdfedit-or.artmonie.com';
+
+function tokenFile() { return path.join(app.getPath('userData'), 'pdfeditor-account.bin'); }
+let acctToken = null;
+let meCache = null; // { user, at }
+try {
+  if (safeStorage.isEncryptionAvailable() && fs.existsSync(tokenFile()))
+    acctToken = safeStorage.decryptString(fs.readFileSync(tokenFile()));
+} catch { acctToken = null; }
+
+function storeToken(t) {
+  acctToken = t;
+  meCache = null;
+  try {
+    if (!t) fs.rmSync(tokenFile(), { force: true });
+    else if (safeStorage.isEncryptionAvailable()) fs.writeFileSync(tokenFile(), safeStorage.encryptString(t));
+    // sans chiffrement disponible : le jeton reste en mémoire seulement (reconnexion à chaque lancement)
+  } catch {}
+}
+
+async function acctMe(force) {
+  if (!acctToken) return null;
+  if (!force && meCache && Date.now() - meCache.at < 60000) return meCache.user;
+  try {
+    const res = await fetch(SERVER_URL + '/api/me', { headers: { Authorization: 'Bearer ' + acctToken }, signal: AbortSignal.timeout(8000) });
+    const user = (await res.json()).user || null;
+    if (!user) { storeToken(null); return null; } // jeton expiré ou refusé
+    meCache = { user, at: Date.now() };
+    return user;
+  } catch {
+    return meCache ? meCache.user : null; // hors ligne : on garde le dernier état connu
+  }
+}
+// Vrai quand les appels doivent passer par le serveur (compte du lycée connecté)
+async function useSchoolServer() { const u = await acctMe(); return !!(u && u.school); }
+
+function serverHeaders() { return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + acctToken }; }
+
+let loginAbort = null;
+ipcMain.handle('acct-me', async () => ({ user: await acctMe() }));
+ipcMain.handle('acct-login', async () => {
+  if (loginAbort) loginAbort.abort();
+  const ctrl = loginAbort = new AbortController();
+  const nonce = crypto.randomBytes(24).toString('base64url'); // 32 caractères, connu de l'application seule
+  try {
+    await shell.openExternal(SERVER_URL + '/auth/login?desktop=' + nonce);
+    const deadline = Date.now() + 5 * 60 * 1000;
+    while (Date.now() < deadline && !ctrl.signal.aborted) {
+      await new Promise(r => setTimeout(r, 2500));
+      if (ctrl.signal.aborted) break;
+      let res;
+      try {
+        res = await fetch(SERVER_URL + '/api/desktop/claim', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nonce }), signal: AbortSignal.timeout(8000),
+        });
+      } catch { continue; } // réseau coupé un instant : on réessaie
+      if (!res.ok) continue;
+      const data = await res.json().catch(() => ({}));
+      if (data.token) {
+        storeToken(data.token);
+        return { user: await acctMe(true) };
+      }
+    }
+    return { error: ctrl.signal.aborted ? 'Connexion annulée.' : 'Délai dépassé : la connexion n’a pas abouti. Réessayez.' };
+  } catch (err) {
+    return { error: err.message };
+  } finally {
+    if (loginAbort === ctrl) loginAbort = null;
+  }
+});
+ipcMain.handle('acct-login-cancel', () => { if (loginAbort) loginAbort.abort(); return true; });
+ipcMain.handle('acct-logout', () => { storeToken(null); return true; });
+
 // ─── IPC : Paramètres (stockés dans userData) ─────────────────────────────────
 function getSettingsPath() {
   return path.join(app.getPath('userData'), 'pdfeditor-settings.json');
 }
 
-ipcMain.handle('get-settings', () => {
-  try { return JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8')); }
-  catch { return {}; }
+ipcMain.handle('get-settings', async () => {
+  let st = {};
+  try { st = JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8')); } catch {}
+  // Compte du lycée connecté : les fonctions IA / OCR Google sont disponibles sans clé (indication « compte », jamais enregistrée)
+  if (await useSchoolServer()) { st.geminiKey = 'compte'; st.googleVisionKey = 'compte'; }
+  return st;
 });
 
 ipcMain.handle('save-settings', (event, settings) => {
@@ -363,7 +447,9 @@ ipcMain.handle('save-settings', (event, settings) => {
     // Merge avec les paramètres existants pour ne jamais perdre de clés
     let existing = {};
     try { existing = JSON.parse(fs.readFileSync(getSettingsPath(), 'utf-8')); } catch(e) {}
-    const merged = { ...existing, ...settings };
+    const incoming = { ...settings };
+    for (const k of ['geminiKey', 'googleVisionKey']) if (incoming[k] === 'compte') delete incoming[k]; // indication, pas une clé
+    const merged = { ...existing, ...incoming };
     fs.writeFileSync(getSettingsPath(), JSON.stringify(merged, null, 2));
     return { success: true };
   }
@@ -374,9 +460,11 @@ ipcMain.handle('save-settings', (event, settings) => {
 // imageData : base64 de l'image originale (couleur, pleine resolution)
 // Retourne { words:[{text,confidence,bbox:{x0,y0,x1,y1}}], ocrWidth, ocrHeight }
 ipcMain.handle('ocr-google-vision', async (event, { imageData, imageType, apiKey }) => {
-  if (!apiKey) throw new Error("Cle API Google Vision manquante");
+  const viaSchool = await useSchoolServer();
+  if (!viaSchool && !apiKey) throw new Error("Cle API Google Vision manquante (ou connectez-vous avec un compte du lycée)");
 
-  const url  = "https://vision.googleapis.com/v1/images:annotate?key=" + encodeURIComponent(apiKey);
+  const url  = viaSchool ? SERVER_URL + '/api/vision'
+                         : "https://vision.googleapis.com/v1/images:annotate?key=" + encodeURIComponent(apiKey);
   const body = JSON.stringify({
     requests: [{
       image: { content: imageData },
@@ -386,7 +474,7 @@ ipcMain.handle('ocr-google-vision', async (event, { imageData, imageType, apiKey
 
   let res;
   try {
-    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+    res = await fetch(url, { method: 'POST', headers: viaSchool ? serverHeaders() : { 'Content-Type': 'application/json' }, body });
   } catch (netErr) {
     throw new Error("Impossible de joindre Google Vision API : " + netErr.message);
   }
@@ -708,9 +796,11 @@ const GEMINI_IMAGE_MODEL = 'gemini-3.1-flash-image';
 const GEMINI_RATIOS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
 
 async function geminiGenerate(model, body, apiKey, timeoutMs) {
-  const res = await fetch(GEMINI_API + model + ':generateContent', {
+  const viaSchool = await useSchoolServer();
+  if (!viaSchool && !apiKey) throw new Error('Clé API Gemini manquante : ajoutez-la dans Paramètres, ou connectez-vous avec un compte du lycée.');
+  const res = await fetch(viaSchool ? SERVER_URL + '/api/gemini/' + model : GEMINI_API + model + ':generateContent', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    headers: viaSchool ? serverHeaders() : { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(timeoutMs),
   });

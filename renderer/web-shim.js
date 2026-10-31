@@ -176,6 +176,15 @@
     const st = A.status(service);
     if (st === 'ok') return;
     if (st === 'offline') throw new Error('Pas de connexion au serveur de PDFEdit.');
+    if (A.ardoisia) {
+      // Pas d'ouverture des réglages (ils s'afficheraient derrière la fenêtre de la fonction) : message au premier plan.
+      const msg = st === 'limited'
+        ? 'Accès limité : la traduction, le résumé, le chat avec le PDF et l’amélioration d’image par IA sont désactivés. L’éditeur et l’OCR intégré restent disponibles.'
+        : st === 'novision' ? 'L’OCR Google Vision n’est pas disponible pour votre compte : l’OCR intégré est utilisé.'
+        : 'Cette fonction IA n’est pas disponible pour votre compte.';
+      if (st !== 'novision') A.notice(msg, st === 'limited');
+      throw new Error(msg);
+    }
     A.gate();
     throw new Error(st === 'login'
       ? 'Connexion requise : connectez-vous avec Google (⚙ Paramètres).'
@@ -184,12 +193,15 @@
 
   // Réponse d'erreur du serveur : message lisible, et réglages ouverts si le compte ou la clé est en cause.
   async function relayError(res, txt, json) {
-    if (json && ['login', 'key', 'badKey'].includes(json.code)) {
-      await window.webAccount.load(true);
-      window.webAccount.gate();
-    }
     const msg = json?.error?.message || (typeof json?.error === 'string' ? json.error : '') ||
       (res.status === 413 ? 'Image trop lourde.' : txt.slice(0, 160));
+    if (json && ['login', 'key', 'badKey', 'credits', 'limited', 'institutionKey', 'quota'].includes(json.code)) {
+      await window.webAccount.load(true);
+      if (window.webAccount.ardoisia) {
+        // Version Ardoisia : message au premier plan (crédits épuisés, accès limité, clés de l'établissement), pas de réglages en arrière-plan
+        if (json.code !== 'login') window.webAccount.notice(msg, json.code === 'credits' || json.code === 'limited');
+      } else window.webAccount.gate();
+    }
     return new Error(msg || 'Erreur ' + res.status);
   }
 
@@ -205,6 +217,8 @@
     const txt = await res.text();
     let json;
     try { json = JSON.parse(txt); } catch { json = null; }
+    const left = res.headers.get('X-Credits-Left');
+    if (left !== null && window.webAccount.setCredits) window.webAccount.setCredits(Number(left));
     if (!res.ok) throw await relayError(res, txt, json);
     if (!json?.candidates?.length) {
       throw new Error('Réponse Gemini vide' + (json?.promptFeedback?.blockReason ? ' (bloquée : ' + json.promptFeedback.blockReason + ')' : ''));
@@ -465,6 +479,8 @@
 
   // ─── OCR Tesseract.js (chargé à la demande) ──────────────────────────────────
   let _tesseractWorker = null;
+  // Langues de reconnaissance de texte (OCR) selon la langue de l'interface : indonésien + anglais, anglais + français, ou français + anglais
+  const _ocrLang = () => (window.PDFE_LANG === 'id' ? 'ind+eng' : window.PDFE_LANG === 'en' ? 'eng+fra' : 'fra+eng');
   async function _getTesseract(lang) {
     if (!window.Tesseract) {
       await new Promise((res, rej) => {
@@ -475,7 +491,7 @@
       });
     }
     if (!_tesseractWorker) {
-      _tesseractWorker = await Tesseract.createWorker(lang || 'fra+eng');
+      _tesseractWorker = await Tesseract.createWorker(lang || _ocrLang());
     }
     return _tesseractWorker;
   }
@@ -586,7 +602,7 @@
     ocrFromData: async (imageData, imageType) => {
       try {
         const settings = lsGet('pdfeditor_settings', {});
-        const worker = await _getTesseract(settings.lang || 'fra+eng');
+        const worker = await _getTesseract(_ocrLang());
         const blob = b64toBlob(imageData, 'image/' + imageType);
         const url = URL.createObjectURL(blob);
         const { data } = await worker.recognize(url);
@@ -720,6 +736,20 @@
     removeAllListeners: () => {},
     getImageData:     () => pickImage(),
     getStartupLog: async () => [],
+  };
+
+  // Ouverture d'un fichier reçu du lanceur Windows (voir web-launcher.js) : PDF → onglet, image → import avec OCR, comme « Importer »
+  window.__openLocalFile = async (name, b64) => {
+    const ext = (name.split('.').pop() || '').toLowerCase();
+    window.__forceNewTab = true; // un document déjà ouvert reste ouvert : le nouveau va dans un nouvel onglet de l'éditeur
+    try {
+      if (ext === 'pdf') return await handleOpenWith({ name, size: Math.round(b64.length * 0.75), data: b64, filePath: null });
+      if (IMAGE_EXTS.includes(ext)) {
+        const img = await normalizeImage(b64, ext);
+        return await _runOcrPipeline({ type: 'image', imageData: img.imageData, imageType: img.imageType, imageName: name });
+      }
+      throw new Error('type de fichier non pris en charge : ' + name);
+    } finally { window.__forceNewTab = false; }
   };
 
   console.log('[web-shim] electronAPI initialisé (mode navigateur)');

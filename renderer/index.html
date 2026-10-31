@@ -17,7 +17,7 @@
                font-src   'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:;
                img-src    'self' data: blob:;
                worker-src 'self' blob: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;
-               connect-src 'self' data: blob: https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com;">
+               connect-src 'self' data: blob: https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com http://127.0.0.1:* http://localhost:*;">
 <title>PDFEdit - Édition Or</title>
 
 <!-- Polices Art Nouveau -->
@@ -625,9 +625,15 @@
 
 <!-- Logique applicative -->
 <!-- Shim web : remplace electronAPI si hors Electron -->
+<!-- Langue de l'interface choisie sur le portail Ardoisia (cookie ard_lang) : anglais et indonésien -->
+<script src="i18n-en.js"></script>
+<script src="i18n-id.js"></script>
+<script src="i18n-lang-id.js"></script>
+<script src="i18n.js"></script>
 <script src="web-account.js"></script>
 <script src="web-shim.js"></script>
 <script src="app.js"></script>
+<script src="web-launcher.js"></script>
 
   <!-- ═══ SÉLECTION : barre d'actions + panneaux ═══════════════════════════ -->
   <div id="sel-toolbar" style="display:none">
@@ -1344,18 +1350,18 @@
         <select id="sum-lang" class="enc-inp" style="flex:1;font-size:.72rem;cursor:pointer">
           <option value="auto">Même langue que le document</option>
           <option value="français">Français</option>
-          <option value="English">Anglais</option>
-          <option value="Spanish">Espagnol</option>
-          <option value="Deutsch">Allemand</option>
-          <option value="Italiano">Italien</option>
-          <option value="Portuguese">Portugais</option>
-          <option value="Dutch">Néerlandais</option>
-          <option value="Arabic">Arabe</option>
-          <option value="Chinese (Simplified)">Chinois simplifié</option>
-          <option value="Japanese">Japonais</option>
-          <option value="Korean">Coréen</option>
-          <option value="Russian">Russe</option>
-          <option value="Indonesian">Indonésien</option>
+          <option value="English">English</option>
+          <option value="Spanish">Español</option>
+          <option value="Deutsch">Deutsch</option>
+          <option value="Italiano">Italiano</option>
+          <option value="Portuguese">Português</option>
+          <option value="Dutch">Nederlands</option>
+          <option value="Arabic">العربية</option>
+          <option value="Chinese (Simplified)">简体中文</option>
+          <option value="Japanese">日本語</option>
+          <option value="Korean">한국어</option>
+          <option value="Russian">Русский</option>
+          <option value="Indonesian">Bahasa Indonesia</option>
         </select>
       </div>
       <div class="mbtn" onclick="closeSummarizePanel()">Fermer</div>
@@ -1428,15 +1434,15 @@
           <select id="meta-lang" class="enc-inp" style="width:100%;cursor:pointer">
             <option value="">— non définie —</option>
             <option value="fr">Français (fr)</option>
-            <option value="en">Anglais (en)</option>
-            <option value="de">Allemand (de)</option>
-            <option value="es">Espagnol (es)</option>
-            <option value="it">Italien (it)</option>
-            <option value="pt">Portugais (pt)</option>
-            <option value="ar">Arabe (ar)</option>
-            <option value="zh">Chinois (zh)</option>
-            <option value="ja">Japonais (ja)</option>
-            <option value="id">Indonésien (id)</option>
+            <option value="en">English (en)</option>
+            <option value="de">Deutsch (de)</option>
+            <option value="es">Español (es)</option>
+            <option value="it">Italiano (it)</option>
+            <option value="pt">Português (pt)</option>
+            <option value="ar">العربية (ar)</option>
+            <option value="zh">中文 (zh)</option>
+            <option value="ja">日本語 (ja)</option>
+            <option value="id">Bahasa Indonesia (id)</option>
           </select>
         </div>
         <div><div class="sum-section-title">Créateur / Logiciel</div><input id="meta-creator" class="enc-inp" placeholder="Application source" style="width:100%;box-sizing:border-box"></div>
