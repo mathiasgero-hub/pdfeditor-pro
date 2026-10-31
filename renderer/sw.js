@@ -4,7 +4,7 @@
  */
 
 // Incrémenter à chaque déploiement pour purger l'ancien cache
-const CACHE_NAME = 'pdfedit-v13';
+const CACHE_NAME = 'pdfedit-v14';
 
 // Fichiers à mettre en cache au premier chargement
 const PRECACHE = [

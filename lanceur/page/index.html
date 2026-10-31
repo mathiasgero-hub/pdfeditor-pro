@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lanceur Windows – PDFEdit Or</title>
+<meta name="description" content="Ouvrez automatiquement vos PDF et vos images dans PDFEdit Or en double-cliquant dessus sous Windows.">
+<link rel="icon" href="/icon.png">
+<style>
+  :root { --bg:#f6f3ec; --card:#fff; --txt:#26231c; --txt2:#6a6456; --gold:#b27a14; --line:#e3dccb; --btn:#b27a14; --btnTxt:#fff; --note:#fbf3dc; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#16140f; --card:#211e16; --txt:#efe9d8; --txt2:#a9a28d; --gold:#e0a73a; --line:#3a3526; --btn:#e0a73a; --btnTxt:#1a1608; --note:#2c2614; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:20px 16px 60px; }
+  .top { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px; flex-wrap:wrap; }
+  .top a { color:var(--gold); text-decoration:none; font-weight:600; }
+  .langs { display:flex; gap:6px; }
+  .langs button { border:1px solid var(--line); background:var(--card); color:var(--txt); border-radius:8px; padding:5px 10px; font:inherit; font-size:.9rem; cursor:pointer; }
+  .langs button[aria-pressed="true"] { background:var(--gold); color:var(--btnTxt); border-color:var(--gold); }
+  h1 { font-size:1.7rem; line-height:1.2; margin:14px 0 6px; }
+  h2 { font-size:1.15rem; margin:0 0 10px; color:var(--gold); }
+  .lead { color:var(--txt2); margin:0 0 20px; font-size:1.05rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin:0 0 16px; }
+  .card p { margin:0 0 10px; } .card p:last-child { margin-bottom:0; }
+  ol, ul { margin:0; padding-left:22px; } li { margin:0 0 8px; } li:last-child { margin-bottom:0; }
+  .dl { display:inline-block; background:var(--btn); color:var(--btnTxt); text-decoration:none; font-weight:700; padding:13px 22px; border-radius:12px; font-size:1.05rem; }
+  .dl:hover { filter:brightness(1.07); }
+  .small { color:var(--txt2); font-size:.88rem; margin-top:8px; }
+  .note { background:var(--note); border-left:4px solid var(--gold); border-radius:8px; padding:10px 14px; margin-top:12px; font-size:.95rem; }
+  kbd, code { background:var(--bg); border:1px solid var(--line); border-radius:5px; padding:1px 6px; font-size:.9em; }
+  footer { text-align:center; color:var(--txt2); font-size:.85rem; margin-top:24px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <a href="/" data-i18n="back">← Retour à PDFEdit Or</a>
+    <div class="langs" role="group" aria-label="Langue">
+      <button type="button" data-lang="fr">Français</button>
+      <button type="button" data-lang="en">English</button>
+      <button type="button" data-lang="id">Bahasa Indonesia</button>
+    </div>
+  </div>
+
+  <h1 data-i18n="h1">Ouvrir vos PDF et vos images dans PDFEdit Or, en un double-clic</h1>
+  <p class="lead" data-i18n="lead">Un petit programme gratuit pour Windows, à installer une seule fois.</p>
+
+  <section class="card">
+    <h2 data-i18n="whatH">Ce que fait ce module</h2>
+    <p data-i18n="what1">Sous Windows, quand vous double-cliquez sur un PDF ou une image, le fichier s’ouvre directement dans PDFEdit Or, dans votre navigateur. Plus besoin de le glisser à la main dans la page.</p>
+    <p data-i18n="what2">Si PDFEdit Or est déjà ouvert, le nouveau fichier s’ajoute dans un nouvel onglet de l’éditeur, dans la même page : votre travail en cours n’est pas touché et le navigateur n’ouvre pas d’onglet en plus.</p>
+    <p data-i18n="what3">Votre fichier ne quitte pas votre ordinateur : le lanceur le transmet de votre disque à votre navigateur par une connexion interne à votre PC, et uniquement au site PDFEdit Or. Il n’envoie rien à Ardoisia.</p>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="needH">Ce qu’il faut</h2>
+    <ul>
+      <li data-i18n="need1">Windows 10 ou 11 (pas de version Mac pour le moment).</li>
+      <li data-i18n="need2">Google Chrome ou Microsoft Edge (récents).</li>
+      <li data-i18n="need3">Votre compte Ardoisia, connecté dans ce navigateur.</li>
+      <li data-i18n="need4">Aucun droit administrateur : l’installation ne concerne que votre session Windows.</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="dlH">Télécharger</h2>
+    <p><a class="dl" href="/lanceur/PDFEdit-Or-Lanceur.zip" download data-i18n="dl">Télécharger le lanceur (.zip)</a></p>
+    <p class="small" data-i18n="dlSmall">Petit fichier (moins de 100 Ko). Il contient l’installeur et le code source du lanceur, lisible par tous.</p>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="instH">Installation (5 minutes, une seule fois)</h2>
+    <ol>
+      <li data-i18n="inst1">Téléchargez le fichier .zip ci-dessus, puis faites un clic droit dessus et choisissez « Extraire tout… ».</li>
+      <li data-i18n="inst2">Dans le dossier obtenu, double-cliquez sur « Installer-lanceur.cmd ». Une fenêtre noire s’ouvre, prépare le lanceur puis affiche « Installation terminée ».</li>
+      <li data-i18n="inst3">Windows ouvre ses réglages. Faites un clic droit sur un PDF, puis « Ouvrir avec », « Choisir une autre application », « PDFEdit Or (web) », cochez « Toujours utiliser cette application » et validez. Windows impose de faire ce choix vous-même.</li>
+      <li data-i18n="inst4">Refaites la même chose avec une image (.jpg, .png…) si vous voulez aussi les ouvrir ainsi.</li>
+      <li data-i18n="inst5">Double-cliquez sur un PDF : PDFEdit Or s’ouvre avec votre fichier. La première fois, Chrome ou Edge peut demander d’autoriser l’accès au réseau local pour ce site : acceptez, c’est seulement votre propre ordinateur.</li>
+    </ol>
+    <div class="note" data-i18n="smart">Si Windows affiche « Windows a protégé votre ordinateur », cliquez sur « Informations complémentaires » puis « Exécuter quand même » : le fichier n’est pas signé par un éditeur payant, mais son code est lisible dans le dossier.</div>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="useH">Au quotidien</h2>
+    <ul>
+      <li data-i18n="use1">Vous pouvez sélectionner plusieurs fichiers : ils s’ouvrent chacun dans leur onglet.</li>
+      <li data-i18n="use2">Une image est importée comme avec « Importer image → PDF » : reconnaissance du texte, puis PDF d’une page.</li>
+      <li data-i18n="use3">Si le fichier s’ouvre dans un onglet du navigateur qui n’est pas affiché, cliquez sur l’onglet PDFEdit Or : un site web ne peut pas se mettre tout seul au premier plan.</li>
+      <li data-i18n="use4">Le lanceur travaille en arrière-plan, sans fenêtre, et s’arrête seul quelques minutes après la fermeture de PDFEdit Or.</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="uninstH">Désinstaller</h2>
+    <p data-i18n="uninst">Double-cliquez sur « Desinstaller-lanceur.cmd » dans le même dossier : le programme et ses réglages Windows sont retirés, et Windows reprend son programme habituel pour les PDF.</p>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="helpH">Un problème ?</h2>
+    <ul>
+      <li data-i18n="help1">Rien ne s’ouvre : vérifiez que « PDFEdit Or (web) » est bien l’application par défaut des PDF (étape 3), puis réessayez.</li>
+      <li data-i18n="help2">Le navigateur affiche la connexion Ardoisia : connectez-vous, puis double-cliquez de nouveau sur le fichier.</li>
+      <li data-i18n="help3">Le fichier est refusé : le lanceur ne prend que les PDF et les images (jpg, png, webp, bmp, gif), jusqu’à 250 Mo.</li>
+      <li data-i18n="help4">Pour utiliser un autre navigateur que celui par défaut, ouvrez le fichier « lanceur.ini » du dossier d’installation et indiquez-y son chemin.</li>
+    </ul>
+  </section>
+
+  <footer>Ardoisia · PDFEdit Or</footer>
+</main>
+
+<script>
+(function () {
+  var T = {
+    fr: {},
+    en: {
+      back: '← Back to PDFEdit Or',
+      h1: 'Open your PDFs and images in PDFEdit Or with a double-click',
+      lead: 'A small free program for Windows, installed just once.',
+      whatH: 'What this module does',
+      what1: 'On Windows, when you double-click a PDF or an image, the file opens straight in PDFEdit Or, in your browser. No more dragging it into the page by hand.',
+      what2: 'If PDFEdit Or is already open, the new file is added in a new editor tab, in the same page: your current work is left alone and the browser does not open an extra tab.',
+      what3: 'Your file never leaves your computer: the launcher passes it from your disk to your browser through an internal connection on your PC, and only to the PDFEdit Or site. It sends nothing to Ardoisia.',
+      needH: 'What you need',
+      need1: 'Windows 10 or 11 (no Mac version for now).',
+      need2: 'Google Chrome or Microsoft Edge (recent versions).',
+      need3: 'Your Ardoisia account, signed in in that browser.',
+      need4: 'No administrator rights: the installation only concerns your own Windows session.',
+      dlH: 'Download',
+      dl: 'Download the launcher (.zip)',
+      dlSmall: 'Small file (under 100 KB). It contains the installer and the launcher’s source code, which anyone can read.',
+      instH: 'Installation (5 minutes, once)',
+      inst1: 'Download the .zip file above, then right-click it and choose “Extract all…”.',
+      inst2: 'In the folder you get, double-click “Installer-lanceur.cmd”. A black window opens, prepares the launcher, then shows “Installation terminée” (installation complete).',
+      inst3: 'Windows opens its settings. Right-click a PDF, then “Open with”, “Choose another app”, “PDFEdit Or (web)”, tick “Always use this app” and confirm. Windows requires you to make this choice yourself.',
+      inst4: 'Do the same with an image (.jpg, .png…) if you want those to open this way too.',
+      inst5: 'Double-click a PDF: PDFEdit Or opens with your file. The first time, Chrome or Edge may ask to allow access to the local network for this site: accept, it is only your own computer.',
+      smart: 'If Windows shows “Windows protected your PC”, click “More info” then “Run anyway”: the file is not signed by a paid publisher, but its code is readable in the folder.',
+      useH: 'Day to day',
+      use1: 'You can select several files: each one opens in its own tab.',
+      use2: 'An image is imported like “Import image → PDF”: text recognition, then a one-page PDF.',
+      use3: 'If the file opens in a browser tab that is not displayed, click the PDFEdit Or tab: a website cannot bring itself to the front.',
+      use4: 'The launcher works in the background, without a window, and stops by itself a few minutes after PDFEdit Or is closed.',
+      uninstH: 'Uninstall',
+      uninst: 'Double-click “Desinstaller-lanceur.cmd” in the same folder: the program and its Windows settings are removed, and Windows goes back to its usual program for PDFs.',
+      helpH: 'Having a problem?',
+      help1: 'Nothing opens: check that “PDFEdit Or (web)” is the default app for PDFs (step 3), then try again.',
+      help2: 'The browser shows the Ardoisia sign-in: sign in, then double-click the file again.',
+      help3: 'The file is refused: the launcher only takes PDFs and images (jpg, png, webp, bmp, gif), up to 250 MB.',
+      help4: 'To use a browser other than the default one, open the “lanceur.ini” file in the installation folder and enter its path there.'
+    },
+    id: {
+      back: '← Kembali ke PDFEdit Or',
+      h1: 'Buka PDF dan gambar Anda di PDFEdit Or dengan satu klik ganda',
+      lead: 'Program kecil gratis untuk Windows, cukup dipasang sekali.',
+      whatH: 'Apa yang dilakukan modul ini',
+      what1: 'Di Windows, saat Anda mengklik ganda sebuah PDF atau gambar, berkas langsung terbuka di PDFEdit Or, di peramban Anda. Tidak perlu lagi menyeretnya ke halaman secara manual.',
+      what2: 'Jika PDFEdit Or sudah terbuka, berkas baru ditambahkan di tab editor baru, di halaman yang sama: pekerjaan Anda yang sedang berjalan tidak terganggu dan peramban tidak membuka tab tambahan.',
+      what3: 'Berkas Anda tidak pernah meninggalkan komputer Anda: peluncur meneruskannya dari disk ke peramban melalui koneksi internal di PC Anda, dan hanya ke situs PDFEdit Or. Peluncur tidak mengirim apa pun ke Ardoisia.',
+      needH: 'Yang Anda perlukan',
+      need1: 'Windows 10 atau 11 (belum ada versi Mac).',
+      need2: 'Google Chrome atau Microsoft Edge (versi terbaru).',
+      need3: 'Akun Ardoisia Anda, sudah masuk di peramban tersebut.',
+      need4: 'Tanpa hak administrator: pemasangan hanya berlaku untuk sesi Windows Anda sendiri.',
+      dlH: 'Unduh',
+      dl: 'Unduh peluncur (.zip)',
+      dlSmall: 'Berkas kecil (kurang dari 100 KB). Isinya pemasang dan kode sumber peluncur, yang dapat dibaca siapa saja.',
+      instH: 'Pemasangan (5 menit, sekali saja)',
+      inst1: 'Unduh berkas .zip di atas, lalu klik kanan dan pilih “Extract all…”.',
+      inst2: 'Di folder hasilnya, klik ganda “Installer-lanceur.cmd”. Jendela hitam terbuka, menyiapkan peluncur, lalu menampilkan “Installation terminée” (pemasangan selesai).',
+      inst3: 'Windows membuka pengaturannya. Klik kanan sebuah PDF, lalu “Open with”, “Choose another app”, “PDFEdit Or (web)”, centang “Always use this app” dan konfirmasi. Windows mewajibkan Anda membuat pilihan ini sendiri.',
+      inst4: 'Lakukan hal yang sama dengan sebuah gambar (.jpg, .png…) jika Anda ingin gambar juga dibuka seperti ini.',
+      inst5: 'Klik ganda sebuah PDF: PDFEdit Or terbuka dengan berkas Anda. Pada pertama kali, Chrome atau Edge mungkin meminta izin akses jaringan lokal untuk situs ini: setujui, itu hanya komputer Anda sendiri.',
+      smart: 'Jika Windows menampilkan “Windows protected your PC”, klik “More info” lalu “Run anyway”: berkas ini tidak ditandatangani penerbit berbayar, tetapi kodenya dapat dibaca di dalam folder.',
+      useH: 'Sehari-hari',
+      use1: 'Anda dapat memilih beberapa berkas sekaligus: masing-masing terbuka di tabnya sendiri.',
+      use2: 'Gambar diimpor seperti “Impor gambar → PDF”: pengenalan teks, lalu PDF satu halaman.',
+      use3: 'Jika berkas terbuka di tab peramban yang tidak sedang ditampilkan, klik tab PDFEdit Or: sebuah situs web tidak dapat memunculkan dirinya sendiri ke depan.',
+      use4: 'Peluncur bekerja di latar belakang, tanpa jendela, dan berhenti sendiri beberapa menit setelah PDFEdit Or ditutup.',
+      uninstH: 'Mencopot pemasangan',
+      uninst: 'Klik ganda “Desinstaller-lanceur.cmd” di folder yang sama: program dan pengaturan Windows-nya dihapus, dan Windows kembali ke program biasanya untuk PDF.',
+      helpH: 'Ada masalah?',
+      help1: 'Tidak ada yang terbuka: pastikan “PDFEdit Or (web)” adalah aplikasi bawaan untuk PDF (langkah 3), lalu coba lagi.',
+      help2: 'Peramban menampilkan halaman masuk Ardoisia: masuklah, lalu klik ganda berkas itu lagi.',
+      help3: 'Berkas ditolak: peluncur hanya menerima PDF dan gambar (jpg, png, webp, bmp, gif), hingga 250 MB.',
+      help4: 'Untuk memakai peramban selain bawaan, buka berkas “lanceur.ini” di folder pemasangan dan tulis lokasinya di sana.'
+    }
+  };
+  var TITLES = { fr: 'Lanceur Windows – PDFEdit Or', en: 'Windows launcher – PDFEdit Or', id: 'Peluncur Windows – PDFEdit Or' };
+  var nodes = document.querySelectorAll('[data-i18n]');
+  nodes.forEach(function (n) { T.fr[n.getAttribute('data-i18n')] = n.innerHTML; });
+
+  var m = document.cookie.match(/(?:^|;\s*)ard_lang=(fr|en|id)/);
+  var q = /[?&]lang=(fr|en|id)/.exec(location.search);
+  var lang = (q && q[1]) || (m && m[1]) || ((navigator.language || '').slice(0, 2) === 'id' ? 'id' : (navigator.language || '').slice(0, 2) === 'en' ? 'en' : 'fr');
+
+  function apply(l) {
+    lang = l;
+    document.documentElement.lang = l;
+    document.title = TITLES[l];
+    nodes.forEach(function (n) { var v = T[l][n.getAttribute('data-i18n')]; n.innerHTML = v != null ? v : T.fr[n.getAttribute('data-i18n')]; });
+    document.querySelectorAll('.langs button').forEach(function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-lang') === l ? 'true' : 'false'); });
+  }
+  document.querySelectorAll('.langs button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var l = b.getAttribute('data-lang');
+      try { // même cookie que le portail Ardoisia : le choix suit la personne d'une application à l'autre
+        var domain = /\.ardoisia\.com$/.test(location.hostname) ? '; Domain=.ardoisia.com' : '';
+        document.cookie = 'ard_lang=' + l + domain + '; Path=/; Max-Age=31536000; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
+      } catch (e) {}
+      apply(l);
+    });
+  });
+  apply(lang);
+})();
+</script>
+</body>
+</html>

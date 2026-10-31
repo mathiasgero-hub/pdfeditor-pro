@@ -1068,5 +1068,13 @@ window.PDFE_DICT.en = {
  "Trop d’essais. Réessayez dans quelques minutes.": "Too many attempts. Please try again in a few minutes.",
  "{x} n’est pas configuré sur le serveur.": "{x} is not configured on the server.",
  "Cette clé API {x} n’a pas le bon format.": "This {x} API key does not have the right format.",
- "Il faut votre clé API {x} personnelle pour cette fonction.": "You need your personal {x} API key for this feature."
+ "Il faut votre clé API {x} personnelle pour cette fonction.": "You need your personal {x} API key for this feature.",
+ "Ouverture automatique sous Windows": "Automatic opening on Windows",
+ "Un petit programme gratuit pour Windows : en double-cliquant sur un PDF ou une image dans l’Explorateur, le fichier s’ouvre directement dans PDFEdit Or, dans cette même page si elle est déjà ouverte.": "A small free program for Windows: when you double-click a PDF or an image in File Explorer, the file opens straight in PDFEdit Or, in this same page if it is already open.",
+ "Le fichier reste sur votre ordinateur. À installer une seule fois, sans droits administrateur.": "The file stays on your computer. Install it just once, no administrator rights needed.",
+ "Téléchargez le fichier .zip et extrayez-le.": "Download the .zip file and extract it.",
+ "Double-cliquez sur « Installer-lanceur.cmd ».": "Double-click “Installer-lanceur.cmd”.",
+ "Clic droit sur un PDF, « Ouvrir avec », « PDFEdit Or (web) », puis « Toujours utiliser cette application ».": "Right-click a PDF, “Open with”, “PDFEdit Or (web)”, then “Always use this app”.",
+ "Télécharger le lanceur (.zip)": "Download the launcher (.zip)",
+ "Explications détaillées": "Detailed instructions"
 };

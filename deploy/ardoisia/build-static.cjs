@@ -34,4 +34,18 @@ if (html === before) throw new Error('index.html : aucune transformation appliqu
 if (/rel="manifest"|serviceWorker\.register/.test(html)) throw new Error('index.html : manifeste ou service worker encore présent')
 if (!html.includes('data-mode="ardoisia"')) throw new Error('index.html : marqueur de mode absent')
 fs.writeFileSync(file, html)
+
+// Page publique « lanceur » (ouverte à tous, hors passerelle de connexion : voir nginx) + archive du lanceur Windows,
+// reconstruite à chaque déploiement à partir du dossier lanceur/ du dépôt.
+const lanceurSrc = path.join(__dirname, '..', '..', 'lanceur')
+const lanceurOut = path.join(out, 'lanceur')
+fs.mkdirSync(lanceurOut, { recursive: true })
+fs.copyFileSync(path.join(lanceurSrc, 'page', 'index.html'), path.join(lanceurOut, 'index.html'))
+const crlf = (buf) => Buffer.from(buf.toString('utf8').replace(/\r?\n/g, '\r\n'), 'utf8') // BOM conservé
+const files = {}
+for (const name of ['Installer-lanceur.cmd', 'Desinstaller-lanceur.cmd', 'installer.ps1', 'PDFEditOrLauncher.cs', 'lanceur.ini', 'LISEZ-MOI.md']) {
+  files['PDFEdit-Or-Lanceur/' + name] = crlf(fs.readFileSync(path.join(lanceurSrc, name)))
+}
+files['PDFEdit-Or-Lanceur/icone.ico'] = fs.readFileSync(path.join(lanceurSrc, 'icone.ico'))
+fs.writeFileSync(path.join(lanceurOut, 'PDFEdit-Or-Lanceur.zip'), require('./zip.cjs')(files))
 console.log('site statique Ardoisia écrit dans ' + out)

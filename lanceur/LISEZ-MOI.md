@@ -47,3 +47,9 @@ Double-cliquez sur **`Desinstaller-lanceur.cmd`** : le programme et toutes les e
 - Source du lanceur : `PDFEditOrLauncher.cs` ; essai sans navigateur : `PDFEditOrLauncher.exe fichier.pdf --no-browser` affiche l'adresse d'ouverture.
 - Côté web : `renderer/web-launcher.js` (lit `#ouvrir=PORT:SECRET:ID`, récupère `/m/<secret>/<id>` puis `/f/<secret>/<id>`, puis écoute `/attente/<secret>` en attente longue ; `window.__forceNewTab` évite le dialogue « Ouvrir un document »), `window.__openLocalFile` dans `renderer/web-shim.js`, et `connect-src` de la CSP (`index.html`) qui autorise `http://127.0.0.1:*`.
 - `installer.ps1 -Simuler -Dossier C:\temp\essai` compile et copie sans toucher au registre.
+
+## Mise à disposition des utilisateurs (Ardoisia)
+
+- Page publique en français, anglais et indonésien : `lanceur/page/index.html`, publiée sur https://pdfedit-or.ardoisia.com/lanceur/ **sans connexion** (bloc `location ^~ /lanceur/` de la configuration nginx, hors passerelle).
+- `PDFEdit-Or-Lanceur.zip` est reconstruit à chaque déploiement par `deploy/ardoisia/build-static.cjs` (fichiers de ce dossier, retours à la ligne Windows) : modifier le lanceur puis redéployer suffit.
+- Dans l'éditeur (version Ardoisia), Paramètres → « Ouverture automatique sous Windows » : explications courtes, téléchargement du .zip et lien vers la page.

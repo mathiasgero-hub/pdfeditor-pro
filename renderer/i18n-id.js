@@ -1068,5 +1068,13 @@ window.PDFE_DICT.id = {
  "Trop d’essais. Réessayez dans quelques minutes.": "Terlalu banyak percobaan. Coba lagi dalam beberapa menit.",
  "{x} n’est pas configuré sur le serveur.": "{x} belum dikonfigurasi di server.",
  "Cette clé API {x} n’a pas le bon format.": "Kunci API {x} ini tidak memiliki format yang benar.",
- "Il faut votre clé API {x} personnelle pour cette fonction.": "Anda memerlukan kunci API {x} pribadi Anda untuk fitur ini."
+ "Il faut votre clé API {x} personnelle pour cette fonction.": "Anda memerlukan kunci API {x} pribadi Anda untuk fitur ini.",
+ "Ouverture automatique sous Windows": "Pembukaan otomatis di Windows",
+ "Un petit programme gratuit pour Windows : en double-cliquant sur un PDF ou une image dans l’Explorateur, le fichier s’ouvre directement dans PDFEdit Or, dans cette même page si elle est déjà ouverte.": "Program kecil gratis untuk Windows: saat Anda mengklik ganda sebuah PDF atau gambar di File Explorer, berkas langsung terbuka di PDFEdit Or, di halaman yang sama jika sudah terbuka.",
+ "Le fichier reste sur votre ordinateur. À installer une seule fois, sans droits administrateur.": "Berkas tetap berada di komputer Anda. Cukup dipasang sekali, tanpa hak administrator.",
+ "Téléchargez le fichier .zip et extrayez-le.": "Unduh berkas .zip lalu ekstrak.",
+ "Double-cliquez sur « Installer-lanceur.cmd ».": "Klik ganda “Installer-lanceur.cmd”.",
+ "Clic droit sur un PDF, « Ouvrir avec », « PDFEdit Or (web) », puis « Toujours utiliser cette application ».": "Klik kanan sebuah PDF, “Open with”, “PDFEdit Or (web)”, lalu “Always use this app”.",
+ "Télécharger le lanceur (.zip)": "Unduh peluncur (.zip)",
+ "Explications détaillées": "Penjelasan lengkap"
 };

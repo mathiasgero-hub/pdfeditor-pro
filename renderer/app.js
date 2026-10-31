@@ -2767,6 +2767,23 @@ async function openOcrSettings() {
   ${_keyHelpHtml('gemini', !geminiKey)}
 </div>`;
 
+  // Version Ardoisia : lanceur Windows (ouvre les PDF et images en double-clic dans cette page). Page publique : /lanceur/
+  if (document.documentElement.dataset.mode === 'ardoisia') body += `
+<div id="launcher-box" style="margin-top:18px;padding-top:16px;border-top:1px solid rgba(200,150,46,.2)">
+  <div style="font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.12em;color:var(--gold);margin-bottom:10px;text-transform:uppercase">Ouverture automatique sous Windows</div>
+  <div style="font-size:.8rem;line-height:1.5;margin-bottom:8px">Un petit programme gratuit pour Windows : en double-cliquant sur un PDF ou une image dans l’Explorateur, le fichier s’ouvre directement dans PDFEdit Or, dans cette même page si elle est déjà ouverte.</div>
+  <div style="font-size:.75rem;opacity:.7;margin-bottom:8px">Le fichier reste sur votre ordinateur. À installer une seule fois, sans droits administrateur.</div>
+  <ol style="font-size:.78rem;line-height:1.5;margin:0 0 10px;padding-left:20px">
+    <li>Téléchargez le fichier .zip et extrayez-le.</li>
+    <li>Double-cliquez sur « Installer-lanceur.cmd ».</li>
+    <li>Clic droit sur un PDF, « Ouvrir avec », « PDFEdit Or (web) », puis « Toujours utiliser cette application ».</li>
+  </ol>
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <a class="mbtn" href="/lanceur/PDFEdit-Or-Lanceur.zip" download style="text-decoration:none"><i class="fa-solid fa-download"></i> Télécharger le lanceur (.zip)</a>
+    <a class="mbtn" href="/lanceur/" target="_blank" rel="noopener" style="text-decoration:none"><i class="fa-solid fa-circle-info"></i> Explications détaillées</a>
+  </div>
+</div>`;
+
   openModal(_s('settings.title'), body);
   if (isWeb) {
     await window.webAccount.load();
